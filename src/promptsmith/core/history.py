@@ -3,45 +3,37 @@
 Every successful refine is recorded here: the original prompt, a compact
 snapshot of the analyzer's findings, and the refined output. The store is
 a single SQLite file under the user data directory, so it survives
-reinstalls and (in a portable build) travels next to the executable.
+reinstalls and portable installations.
 
-SQLite is a deliberate choice over an analytical engine like DuckDB: this
-is a transactional insert/list/delete workload, not aggregation over large
-datasets, and sqlite3 ships in the Python standard library - no third-party
-dependency, in keeping with the project's "local only, zero commercial
-dependencies" stance.
-
-The store never raises into the UI for routine failures: history is a
-convenience, and a locked or unwritable database must not break the
-refine flow. Methods log and degrade (return empty / False) instead.
+History is best-effort. A locked, unwritable, or corrupt database must not
+break prompt refinement. Routine failures are logged and degrade to empty
+results, while explicit exports still raise so the user sees the failure.
 """
 
 import csv
-import io
 import json
 import logging
+import os
 import sqlite3
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional, TextIO
 
 from promptsmith.utils.path_utils import get_user_data_dir
 
 logger = logging.getLogger(__name__)
 
-#: Schema version, stored in a metadata table so a future migration can
-#: detect and upgrade an older file rather than guessing from columns.
 SCHEMA_VERSION = 1
-
 DB_FILENAME = "history.db"
+SQLITE_TIMEOUT_SECONDS = 5.0
+SQLITE_BUSY_TIMEOUT_MS = 5000
 
 
 @dataclass
 class HistoryEntry:
-    """One recorded refine. `analysis` is a JSON-serializable dict snapshot
-    of the analyzer output at refine time (not the live object), so old
-    rows stay readable even if the analyzer's internals change later."""
+    """One recorded refinement and its analyzer snapshot."""
 
     prompt: str
     refined: str
@@ -55,11 +47,7 @@ class HistoryEntry:
 
     @staticmethod
     def analysis_from_object(analysis: Any) -> dict:
-        """Build the stored analysis snapshot from a PromptAnalysis.
-
-        Kept defensive: anything missing or oddly shaped degrades to a
-        partial dict rather than blowing up the refine that triggered it.
-        """
+        """Build a defensive JSON-serializable analysis snapshot."""
         if analysis is None:
             return {}
         snap: dict = {}
@@ -86,17 +74,12 @@ class HistoryEntry:
                 getattr(c, "question", getattr(c, "text", str(c))) for c in challenges
             ]
         except Exception as exc:  # pragma: no cover - defensive only
-            logger.debug(f"Partial analysis snapshot ({exc})")
+            logger.debug("Partial analysis snapshot (%s)", exc)
         return snap
 
 
 class HistoryStore:
-    """SQLite-backed CRUD for prompt history.
-
-    A thin, synchronous wrapper - SQLite calls here are sub-millisecond
-    for the row counts a single user generates, so there's no need to push
-    them off the UI thread the way an LLM refine is.
-    """
+    """SQLite-backed CRUD for local prompt history."""
 
     def __init__(self, db_path: Optional[Path] = None) -> None:
         if db_path is None:
@@ -104,27 +87,99 @@ class HistoryStore:
         self.db_path = Path(db_path)
         self._available = False
         try:
-            self._init_db()
+            self._validate_database_path()
+            self._init_db_with_recovery()
             self._available = True
         except Exception as exc:
-            # A broken history DB must never take down the app - the
-            # feature simply goes dark until the underlying issue clears.
-            logger.error(f"History disabled - could not open {self.db_path}: {exc}")
+            logger.error("History disabled - could not open %s: %s", self.db_path, exc)
 
     @property
     def available(self) -> bool:
-        """False when the DB couldn't be opened/created; callers should
-        hide or disable history UI rather than error."""
+        """False when the database could not be safely opened or created."""
         return self._available
 
+    def _validate_database_path(self) -> None:
+        """Reject symlinks for the database and its parent directory.
+
+        Prompt history contains full prompts and refined output. Following a
+        planted symlink could write that private data to an unintended file.
+        """
+        if self.db_path.is_symlink():
+            raise OSError(f"Refusing to use symlinked history database: {self.db_path}")
+        parent = self.db_path.parent
+        if parent.exists() and parent.is_symlink():
+            raise OSError(f"Refusing to use symlinked history directory: {parent}")
+
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(
+            str(self.db_path),
+            timeout=SQLITE_TIMEOUT_SECONDS,
+            isolation_level="DEFERRED",
+        )
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    def _init_db(self) -> None:
+    @staticmethod
+    def _is_corruption_error(exc: sqlite3.DatabaseError) -> bool:
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "database disk image is malformed",
+                "file is not a database",
+                "database corrupt",
+                "malformed database schema",
+            )
+        )
+
+    def _init_db_with_recovery(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._initialize_schema()
+        except sqlite3.DatabaseError as exc:
+            if not self._is_corruption_error(exc):
+                raise
+            quarantined = self._quarantine_corrupt_database()
+            logger.error(
+                "History database was corrupt and has been quarantined as %s; "
+                "a new empty database will be created",
+                quarantined,
+            )
+            self._initialize_schema()
+
+    def _quarantine_corrupt_database(self) -> Path:
+        """Move a corrupt database aside without deleting user data."""
+        if self.db_path.is_symlink():
+            raise OSError(f"Refusing to move symlinked history database: {self.db_path}")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        target = self.db_path.with_name(f"{self.db_path.name}.corrupt-{stamp}")
+        counter = 1
+        while target.exists():
+            target = self.db_path.with_name(
+                f"{self.db_path.name}.corrupt-{stamp}-{counter}"
+            )
+            counter += 1
+        os.replace(self.db_path, target)
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(f"{self.db_path}{suffix}")
+            if sidecar.exists() and not sidecar.is_symlink():
+                try:
+                    sidecar.unlink()
+                except OSError:
+                    logger.warning("Could not remove stale SQLite sidecar %s", sidecar)
+        return target
+
+    def _initialize_schema(self) -> None:
         with self._connect() as conn:
+            journal_mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+            if str(journal_mode).lower() != "wal":
+                logger.warning("SQLite WAL mode unavailable; using %s", journal_mode)
+            conn.execute("PRAGMA synchronous = NORMAL")
+            check = conn.execute("PRAGMA quick_check").fetchone()[0]
+            if check != "ok":
+                raise sqlite3.DatabaseError(f"database corrupt: quick_check returned {check}")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS meta (
@@ -152,12 +207,8 @@ class HistoryStore:
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
             )
-            conn.commit()
 
     def add(self, entry: HistoryEntry) -> Optional[int]:
-        """Insert one entry. Returns the new row id, or None on failure
-        (logged, never raised - a failed history write must not abort the
-        refine that produced it)."""
         if not self._available:
             return None
         created = entry.created_at or datetime.now(timezone.utc).isoformat()
@@ -181,10 +232,9 @@ class HistoryStore:
                         json.dumps(entry.analysis, ensure_ascii=False),
                     ),
                 )
-                conn.commit()
                 return cur.lastrowid
-        except Exception as exc:
-            logger.error(f"Failed to record history entry: {exc}")
+        except (sqlite3.Error, OSError, TypeError, ValueError) as exc:
+            logger.error("Failed to record history entry: %s", exc)
             return None
 
     def _row_to_entry(self, row: sqlite3.Row) -> HistoryEntry:
@@ -205,9 +255,12 @@ class HistoryStore:
         )
 
     def list(self, limit: Optional[int] = None, offset: int = 0) -> List[HistoryEntry]:
-        """Return entries newest-first. `limit=None` returns all."""
         if not self._available:
             return []
+        if limit is not None and limit < 0:
+            raise ValueError("History limit cannot be negative")
+        if offset < 0:
+            raise ValueError("History offset cannot be negative")
         try:
             with self._connect() as conn:
                 sql = "SELECT * FROM history ORDER BY id DESC"
@@ -216,9 +269,9 @@ class HistoryStore:
                     sql += " LIMIT ? OFFSET ?"
                     params = (limit, offset)
                 rows = conn.execute(sql, params).fetchall()
-                return [self._row_to_entry(r) for r in rows]
-        except Exception as exc:
-            logger.error(f"Failed to list history: {exc}")
+                return [self._row_to_entry(row) for row in rows]
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Failed to list history: %s", exc)
             return []
 
     def get(self, entry_id: int) -> Optional[HistoryEntry]:
@@ -230,36 +283,33 @@ class HistoryStore:
                     "SELECT * FROM history WHERE id = ?", (entry_id,)
                 ).fetchone()
                 return self._row_to_entry(row) if row else None
-        except Exception as exc:
-            logger.error(f"Failed to get history entry {entry_id}: {exc}")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Failed to get history entry %s: %s", entry_id, exc)
             return None
 
     def delete(self, entry_id: int) -> bool:
-        """Delete one entry by id. Returns True if a row was removed."""
         if not self._available:
             return False
         try:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM history WHERE id = ?", (entry_id,))
-                conn.commit()
                 return cur.rowcount > 0
-        except Exception as exc:
-            logger.error(f"Failed to delete history entry {entry_id}: {exc}")
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Failed to delete history entry %s: %s", entry_id, exc)
             return False
 
     def clear(self) -> int:
-        """Delete all entries. Returns the number of rows removed."""
         if not self._available:
             return 0
         try:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM history")
-                conn.commit()
-                # Reclaim the file space a large history could have taken.
+                removed = cur.rowcount
+            with self._connect() as conn:
                 conn.execute("VACUUM")
-                return cur.rowcount
-        except Exception as exc:
-            logger.error(f"Failed to clear history: {exc}")
+            return removed
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Failed to clear history: %s", exc)
             return 0
 
     def count(self) -> int:
@@ -267,31 +317,54 @@ class HistoryStore:
             return 0
         try:
             with self._connect() as conn:
-                return conn.execute("SELECT COUNT(*) FROM history").fetchone()[0]
-        except Exception as exc:
-            logger.error(f"Failed to count history: {exc}")
+                return int(conn.execute("SELECT COUNT(*) FROM history").fetchone()[0])
+        except (sqlite3.Error, OSError) as exc:
+            logger.error("Failed to count history: %s", exc)
             return 0
 
-    def export_json(self, out_path: Path) -> int:
-        """Write the entire history to a JSON array file. Returns the count
-        of exported entries. Raises on write failure (unlike the routine
-        CRUD methods) because an export is an explicit user action whose
-        failure they need to see."""
-        entries = self.list()
-        payload = [asdict(e) for e in entries]
+    @staticmethod
+    def _atomic_export(
+        out_path: Path,
+        writer: Callable[[TextIO], None],
+        *,
+        newline: Optional[str] = None,
+    ) -> None:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        if out_path.is_symlink():
+            raise OSError(f"Refusing to export through symlink: {out_path}")
+
+        temp_path: Optional[Path] = None
+        fd: Optional[int] = None
+        try:
+            fd, raw_path = tempfile.mkstemp(
+                prefix=f".{out_path.name}.", suffix=".tmp", dir=out_path.parent
+            )
+            temp_path = Path(raw_path)
+            with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
+                fd = None
+                writer(handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, out_path)
+            temp_path = None
+        finally:
+            if fd is not None:
+                os.close(fd)
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
+    def export_json(self, out_path: Path) -> int:
+        entries = self.list()
+        payload = [asdict(entry) for entry in entries]
+        self._atomic_export(
+            Path(out_path),
+            lambda handle: json.dump(payload, handle, ensure_ascii=False, indent=2),
+        )
         return len(entries)
 
     def export_csv(self, out_path: Path) -> int:
-        """Write the entire history to a CSV file. Nested analysis is
-        flattened to a handful of readable columns plus the raw JSON, so
-        the file opens cleanly in a spreadsheet. Returns the entry count."""
         entries = self.list()
-        out_path = Path(out_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
         fields = [
             "id",
             "created_at",
@@ -306,25 +379,28 @@ class HistoryStore:
             "refined",
             "analysis_json",
         ]
-        with open(out_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fields)
+
+        def write_csv(handle: TextIO) -> None:
+            writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader()
-            for e in entries:
-                a = e.analysis or {}
+            for entry in entries:
+                analysis = entry.analysis or {}
                 writer.writerow(
                     {
-                        "id": e.id,
-                        "created_at": e.created_at,
-                        "profile": e.profile,
-                        "template": e.template or "",
-                        "backend": e.backend or "",
-                        "model": e.model or "",
-                        "score": a.get("score", ""),
-                        "detected_type": a.get("detected_type", ""),
-                        "is_ready": a.get("is_ready", ""),
-                        "prompt": e.prompt,
-                        "refined": e.refined,
-                        "analysis_json": json.dumps(a, ensure_ascii=False),
+                        "id": entry.id,
+                        "created_at": entry.created_at,
+                        "profile": entry.profile,
+                        "template": entry.template or "",
+                        "backend": entry.backend or "",
+                        "model": entry.model or "",
+                        "score": analysis.get("score", ""),
+                        "detected_type": analysis.get("detected_type", ""),
+                        "is_ready": analysis.get("is_ready", ""),
+                        "prompt": entry.prompt,
+                        "refined": entry.refined,
+                        "analysis_json": json.dumps(analysis, ensure_ascii=False),
                     }
                 )
+
+        self._atomic_export(Path(out_path), write_csv, newline="")
         return len(entries)

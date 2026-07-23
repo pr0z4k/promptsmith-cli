@@ -1,30 +1,32 @@
-"""
-Model download utility for PromptSmith-cli.
+"""Secure model download utility for PromptSmith-cli.
 
-Downloads pre-configured LLM models from HuggingFace, or an arbitrary
-user-supplied .gguf URL.
+Downloads pre-configured GGUF models from HuggingFace or a user-supplied HTTPS
+URL. Downloads are streamed to a sibling ``.part`` file, validated, flushed,
+and atomically promoted to their final path.
 """
 
+from __future__ import annotations
+
+import hashlib
+import ipaddress
 import logging
 import os
 import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
-
-logger = logging.getLogger(__name__)
+from urllib.parse import unquote, urlsplit
 
 from promptsmith.utils.system_utils import MODEL_DIR
 
-# NOTE: HuggingFace repos/filenames do change or get reorganized over time.
-# If a preset 404s/401s, check the repo's "Files" tab on huggingface.co for
-# the current filename, or use "Download From URL" in Settings instead.
+logger = logging.getLogger(__name__)
+
 MODELS_CONFIG: Dict[str, Dict[str, Any]] = {
     "phi4-mini": {
         "name": "Phi-4-mini-instruct",
         "file": "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf",
         "url": (
-            "https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF"
+            "https://huggingface.co/bartowski/microsoft-Phi-4-mini-instruct-GGUF"
             "/resolve/main/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
         ),
         "ram_required_gb": 16,
@@ -42,42 +44,137 @@ MODELS_CONFIG: Dict[str, Dict[str, Any]] = {
     },
 }
 
-
 ProgressCallback = Callable[[str, int, int], None]
-"""Called as (label, bytes_downloaded, total_bytes). total_bytes is 0 if unknown."""
-
-
-# Every valid GGUF file begins with these four ASCII bytes ("GGUF"). This is
-# the format's magic number, checked by llama.cpp itself before it will load
-# a model. Verifying it here is a microsecond read that catches the whole
-# class of "this file is not actually a model": an empty download, an
-# HTML error page or login wall saved under a .gguf name, or an
-# unrelated file sitting where a model is expected. It does NOT detect a
-# file that begins with a valid GGUF header and is then truncated or
-# corrupted further in - that would need a full content hash,
-# which is deliberately out of scope (a multi-second operation on a
-# multi-GB file, for a much rarer failure). The goal is to fail fast and
-# legibly here, rather than deep inside llama.cpp's native loader with an
-# error that gives the user no idea the file itself is the problem.
 GGUF_MAGIC = b"GGUF"
+CONNECT_TIMEOUT_SECONDS = 10
+READ_TIMEOUT_SECONDS = 120
+CHUNK_SIZE = 1024 * 1024
+_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+
+class InvalidModelFileError(RuntimeError):
+    """Raised when downloaded content is not a usable GGUF model."""
+
+
+class DownloadSecurityError(RuntimeError):
+    """Raised when a URL, redirect, path, or target violates download policy."""
 
 
 def is_valid_gguf(path: Path) -> bool:
-    """True if `path` exists and starts with the GGUF magic number.
+    """Return whether ``path`` is a regular, non-symlink GGUF file."""
 
-    Returns False (never raises) for a missing file, an unreadable file,
-    or one too short to contain the magic - all of which mean "not a
-    usable model" for the caller's purposes.
-    """
     try:
-        with open(path, "rb") as fh:
+        if path.is_symlink() or not path.is_file():
+            return False
+        with path.open("rb") as fh:
             return fh.read(len(GGUF_MAGIC)) == GGUF_MAGIC
     except OSError:
         return False
 
 
-class InvalidModelFileError(RuntimeError):
-    """Raised when a downloaded file is not a valid GGUF model."""
+def _validate_https_url(url: str, *, field: str = "URL") -> str:
+    """Validate an HTTPS URL without credentials or fragments."""
+
+    value = url.strip()
+    if not value:
+        raise ValueError(f"{field} cannot be empty")
+    if any(ord(char) < 32 for char in value):
+        raise ValueError(f"{field} contains control characters")
+
+    parsed = urlsplit(value)
+    if parsed.scheme.lower() != "https":
+        raise ValueError(f"{field} must use HTTPS")
+    if not parsed.hostname:
+        raise ValueError(f"{field} must include a hostname")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{field} must not contain embedded credentials")
+    if parsed.fragment:
+        raise ValueError(f"{field} must not contain a fragment")
+
+    host = parsed.hostname
+    if host.startswith("[") or host.endswith("]"):
+        raise ValueError(f"{field} contains a malformed hostname")
+    try:
+        if ":" in host:
+            ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ValueError(f"{field} contains an invalid IP address") from exc
+    return value
+
+
+def _validate_checksum(expected_sha256: Optional[str]) -> Optional[str]:
+    if expected_sha256 is None:
+        return None
+    checksum = expected_sha256.strip().lower()
+    if not _SHA256_RE.fullmatch(checksum):
+        raise ValueError("SHA-256 checksum must contain exactly 64 hexadecimal characters")
+    return checksum
+
+
+def _safe_filename(name: str) -> str:
+    """Validate a user-visible model filename as one plain GGUF basename."""
+
+    candidate = unquote(name.strip())
+    if not candidate:
+        raise ValueError("Model filename cannot be empty")
+    if candidate in {".", ".."}:
+        raise ValueError("Model filename is invalid")
+    if "/" in candidate or "\\" in candidate or Path(candidate).name != candidate:
+        raise ValueError("Model filename must not contain path separators")
+    if not _FILENAME_RE.fullmatch(candidate):
+        raise ValueError(
+            "Model filename must be 1-255 characters and contain only letters, "
+            "numbers, '.', '_' or '-'"
+        )
+    if not candidate.lower().endswith(".gguf"):
+        raise ValueError("Model filename must end with .gguf")
+    return candidate
+
+
+def _confined_model_path(filename: str) -> Path:
+    name = _safe_filename(filename)
+    root = MODEL_DIR.resolve()
+    destination = MODEL_DIR / name
+    if destination.parent.resolve() != root:
+        raise DownloadSecurityError("Model destination escapes the configured model directory")
+    return destination
+
+
+def filename_from_url(url: str) -> str:
+    """Derive a safe GGUF basename from a validated HTTPS URL."""
+
+    validated = _validate_https_url(url)
+    raw_name = unquote(Path(urlsplit(validated).path).name)
+    if not raw_name:
+        raw_name = "custom-model.gguf"
+    sanitized = re.sub(r"[^A-Za-z0-9._-]", "_", raw_name)
+    if not sanitized.lower().endswith(".gguf"):
+        sanitized += ".gguf"
+    if len(sanitized) > 255:
+        sanitized = f"{sanitized[:-5][:250]}.gguf"
+    return _safe_filename(sanitized)
+
+
+def _cleanup_partial(part_path: Path) -> None:
+    try:
+        if part_path.is_symlink():
+            raise DownloadSecurityError(f"Refusing to use symlinked partial file: {part_path}")
+        if part_path.exists():
+            part_path.unlink()
+    except DownloadSecurityError:
+        raise
+    except OSError as exc:
+        raise RuntimeError(f"Cannot remove partial model file {part_path}: {exc}") from exc
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _stream_download(
@@ -86,211 +183,164 @@ def _stream_download(
     dest_path: Path,
     progress_callback: Optional[ProgressCallback] = None,
     max_attempts: int = 3,
+    expected_sha256: Optional[str] = None,
 ) -> None:
-    """Shared streaming-download core used by both preset and custom-URL downloads.
+    """Securely stream one GGUF model to ``dest_path``."""
 
-    Retries on low-level, non-HTTP failures (e.g. transient OS/threading errors)
-    since these are typically momentary rather than a problem with the URL itself.
-    """
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+    source_url = _validate_https_url(url)
+    checksum = _validate_checksum(expected_sha256)
+    dest_path = Path(dest_path)
+
+    if dest_path.is_symlink():
+        raise DownloadSecurityError(f"Refusing to overwrite symlinked model: {dest_path}")
     if dest_path.exists():
-        # A file being present is not proof it's a usable model - it could
-        # have been corrupted on disk since it was written (bad copy,
-        # interrupted sync, bit-rot), or an earlier version of this code
-        # could have saved a non-model response under this name. Verify the
-        # GGUF header before trusting it; if it's not valid, treat the file
-        # as absent and re-download rather than skipping onto a broken file
-        # that llama.cpp will later fail to load with an opaque native error.
-        if is_valid_gguf(dest_path):
-            logger.info(f"{label}: already downloaded, skipping.")
+        if is_valid_gguf(dest_path) and (checksum is None or _sha256_file(dest_path) == checksum):
+            logger.info("%s: already downloaded, skipping", label)
             if progress_callback:
                 progress_callback(label, 1, 1)
             return
-        logger.warning(
-            f"{label}: existing file at {dest_path} is not a valid GGUF "
-            f"(corrupt or incomplete) - re-downloading."
-        )
+        logger.warning("%s: existing model is invalid or fails checksum; replacing it", label)
         try:
             dest_path.unlink()
-        except OSError as e:
-            raise RuntimeError(
-                f"Existing model file {dest_path} is invalid and could not "
-                f"be removed for re-download: {e}"
-            ) from e
+        except OSError as exc:
+            raise RuntimeError(f"Cannot remove invalid model file {dest_path}: {exc}") from exc
 
     try:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        logger.error(f"Cannot create model directory {dest_path.parent}: {e}")
-        raise RuntimeError(f"Cannot create model directory: {e}") from e
+    except OSError as exc:
+        raise RuntimeError(f"Cannot create model directory {dest_path.parent}: {exc}") from exc
+    if dest_path.parent.is_symlink():
+        raise DownloadSecurityError(f"Refusing to write through symlinked directory: {dest_path.parent}")
 
-    import requests
-
-    # Download to a .part sibling and only atomically rename to dest_path
-    # once the write is verified complete. dest_path.exists() above is what
-    # future runs trust to mean "already have this" - if a partial write
-    # ever reached dest_path directly, an interruption that no Python
-    # exception handler can catch (process killed, power loss, a hard
-    # crash - none of these run the except blocks below) would leave a
-    # truncated file there, and the next run would skip re-downloading it,
-    # treating corrupt data as complete. A temp path plus atomic rename
-    # means dest_path only ever exists in its final, complete form.
     part_path = dest_path.with_name(dest_path.name + ".part")
+    _cleanup_partial(part_path)
+
+    try:
+        import requests
+    except ImportError as exc:
+        raise RuntimeError("Missing dependency: requests. Install project download dependencies") from exc
 
     last_error: Optional[Exception] = None
     for attempt in range(1, max_attempts + 1):
         if attempt > 1:
-            logger.info(f"Retrying download of {label} (attempt {attempt}/{max_attempts})...")
-            time.sleep(1.5 * attempt)
-        logger.info(f"Downloading {label} from {url} ...")
+            time.sleep(min(1.5 * attempt, 10))
+        response = None
         try:
-            resp = requests.get(url, stream=True, timeout=60)
-            resp.raise_for_status()
-            total = int(resp.headers.get("content-length", 0))
+            logger.info("Downloading %s from %s", label, source_url)
+            response = requests.get(
+                source_url,
+                stream=True,
+                timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+                allow_redirects=True,
+            )
+            final_url = _validate_https_url(response.url or source_url, field="Redirect URL")
+            response.raise_for_status()
+
+            content_length = response.headers.get("content-length")
+            try:
+                total = int(content_length) if content_length else 0
+            except (TypeError, ValueError) as exc:
+                raise InvalidModelFileError("Server returned an invalid Content-Length header") from exc
+            if total < 0:
+                raise InvalidModelFileError("Server returned a negative Content-Length header")
+
             downloaded = 0
             last_reported_pct = -1
+            digest = hashlib.sha256()
+            with part_path.open("xb") as fh:
+                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                    if not chunk:
+                        continue
+                    fh.write(chunk)
+                    digest.update(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback:
+                        pct = int(downloaded * 100 / total) if total > 0 else -1
+                        if total <= 0 or pct != last_reported_pct:
+                            last_reported_pct = pct
+                            progress_callback(label, downloaded, total)
+                fh.flush()
+                os.fsync(fh.fileno())
 
-            def _write_all(pbar=None):
-                nonlocal downloaded, last_reported_pct
-                with open(part_path, "wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=65536):
-                        if not chunk:
-                            continue
-                        fh.write(chunk)
-                        downloaded += len(chunk)
-                        if pbar is not None:
-                            pbar.update(len(chunk))
-                        if progress_callback:
-                            # Throttle to whole-percent (or every chunk if size unknown)
-                            # so we don't flood the caller with thousands of updates.
-                            pct = int(downloaded * 100 / total) if total > 0 else -1
-                            if total <= 0 or pct != last_reported_pct:
-                                last_reported_pct = pct
-                                progress_callback(label, downloaded, total)
-
-            if progress_callback:
-                # Already have our own progress reporting (e.g. the TUI's status
-                # bar) - skip tqdm's own terminal rendering entirely.
-                _write_all()
-            else:
-                from tqdm import tqdm
-                with tqdm(
-                    total=total if total > 0 else None,
-                    unit="B",
-                    unit_scale=True,
-                    desc=f"Downloading {label}"
-                ) as pbar:
-                    _write_all(pbar)
-
-            # Verify against the server's declared size before trusting the
-            # download - a connection that drops mid-stream without raising
-            # (some servers/proxies just close silently) would otherwise
-            # produce a short-but-not-exception-raising write.
             if total > 0 and downloaded != total:
                 raise IOError(
-                    f"Downloaded size ({downloaded} bytes) does not match "
-                    f"expected size ({total} bytes) - connection likely "
-                    f"dropped mid-download"
+                    f"Downloaded size ({downloaded} bytes) does not match expected size "
+                    f"({total} bytes)"
                 )
-
-            # Verify the download is actually a GGUF model before promoting
-            # it to the final path. A URL that returned an HTML error page,
-            # a login/consent wall, or a redirect body would otherwise pass
-            # the size check above and be atomically saved as a valid-looking
-            # .gguf - then fail deep inside llama.cpp at load time. Catching
-            # it here gives a clear, actionable error and leaves no bad file
-            # behind (the .part is discarded, dest_path is never written).
             if not is_valid_gguf(part_path):
-                try:
-                    part_path.unlink()
-                except OSError:
-                    pass
+                raise InvalidModelFileError(f"{label}: downloaded content is not a valid GGUF model")
+            actual_checksum = digest.hexdigest()
+            if checksum is not None and actual_checksum != checksum:
                 raise InvalidModelFileError(
-                    f"{label}: downloaded file is not a valid GGUF model "
-                    f"(the URL may point to an HTML page, a login wall, or "
-                    f"a non-model file rather than a direct .gguf download)."
+                    f"{label}: SHA-256 mismatch; expected {checksum}, got {actual_checksum}"
                 )
 
-            os.replace(part_path, dest_path)  # atomic on the same filesystem
-            logger.info(f"{label}: saved to {dest_path}")
+            if dest_path.is_symlink():
+                raise DownloadSecurityError(f"Refusing to replace symlinked model: {dest_path}")
+            os.replace(part_path, dest_path)
+            logger.info("%s: saved to %s (final source %s)", label, dest_path, final_url)
             if progress_callback:
-                progress_callback(label, downloaded, total if total > 0 else downloaded)
+                progress_callback(label, downloaded, total or downloaded)
             return
 
-        except InvalidModelFileError as e:
-            # Deterministic: the same URL returns the same non-model content
-            # on every attempt, so retrying only re-downloads the same
-            # garbage. Fail immediately with the clear message. Listed
-            # before the requests/Exception handlers so it can never be
-            # swallowed and retried by them.
-            logger.error(str(e))
-            if part_path.exists():
-                part_path.unlink()
+        except DownloadSecurityError:
+            _cleanup_partial(part_path)
             raise
-        except ImportError as e:
-            logger.error(f"Missing dependency for model download: {e}")
-            raise RuntimeError(f"Missing dependency: {e}. Install with: pip install requests tqdm") from e
-        except requests.RequestException as e:
-            response = getattr(e, "response", None)
-            # The 403 happens on the URL requests was redirected TO (the
-            # xethub/cas-bridge domain), not the original huggingface.co
-            # resolve URL we requested - response.url reflects the final,
-            # post-redirect URL, which is what must be checked here.
-            failure_url = getattr(response, "url", None) or url
-            is_xet_bridge_failure = (
-                response is not None
-                and response.status_code == 403
-                and ("xethub" in failure_url or "cas-bridge" in failure_url)
+        except InvalidModelFileError:
+            _cleanup_partial(part_path)
+            raise
+        except requests.HTTPError as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else None
+            failure_url = getattr(exc.response, "url", None) or source_url
+            is_xet_403 = status == 403 and (
+                "xethub" in str(failure_url).lower() or "cas-bridge" in str(failure_url).lower()
             )
-            if is_xet_bridge_failure and attempt < max_attempts:
-                # HuggingFace's "Xet" storage backend routes legacy/plain
-                # HTTP downloads through a CAS bridge (cas-bridge.xethub.hf.co)
-                # that has a long-documented history of intermittent 403s,
-                # independent of this project - confirmed by many unrelated
-                # reports of the exact same failure over many months. Unlike
-                # a real 404/401, this is worth retrying: each attempt gets a
-                # freshly-signed URL, and the underlying issue is reported as
-                # transient in many (not all) cases.
+            retryable = is_xet_403 or status in _RETRYABLE_STATUS_CODES
+            _cleanup_partial(part_path)
+            if retryable and attempt < max_attempts:
                 logger.warning(
-                    f"{label}: HuggingFace's Xet storage bridge returned 403 "
-                    f"(attempt {attempt}/{max_attempts}) - this is a known, "
-                    f"external HF infrastructure issue, not specific to this "
-                    f"file or this app. Retrying with a fresh signed URL..."
+                    "%s: transient HTTP failure %s (attempt %s/%s); retrying",
+                    label,
+                    status,
+                    attempt,
+                    max_attempts,
                 )
-                last_error = e
-                if part_path.exists():
-                    part_path.unlink()
                 continue
-            # Real HTTP-level failure (404, 401, timeout, DNS, ...) - not
-            # transient, retrying won't help. Also reached for the Xet CAS
-            # bridge failure once retries are exhausted.
-            logger.error(f"Failed to download {label}: {e}")
-            if part_path.exists():
-                part_path.unlink()
-            if is_xet_bridge_failure:
+            if is_xet_403:
                 raise RuntimeError(
-                    f"Download failed for {label}: HuggingFace's Xet storage "
-                    f"bridge (cas-bridge.xethub.hf.co) returned 403 Forbidden "
-                    f"after {max_attempts} attempts. This is a known, "
-                    f"recurring issue on HuggingFace's side (search "
-                    f"'cas-bridge.xethub.hf.co 403' - other users hit this "
-                    f"intermittently across many months), not something "
-                    f"wrong with this app or your connection. It typically "
-                    f"resolves on its own within a few hours. Try again "
-                    f"later, or download the file manually via a browser "
-                    f"and place it directly in the models/ folder."
-                ) from e
-            raise RuntimeError(f"Download failed for {label}: {e}") from e
-        except Exception as e:
-            # Catches low-level, non-HTTP failures (e.g. the CPython/OS
-            # 'bad value(s) in fds_to_keep' class of transient thread/subprocess
-            # errors) which are typically momentary - worth a retry. Also
-            # catches the size-mismatch IOError raised above.
-            logger.error(f"Unexpected error downloading {label} (attempt {attempt}/{max_attempts}): {e}")
-            last_error = e
-            if part_path.exists():
-                part_path.unlink()
+                    f"Download failed for {label}: HuggingFace Xet storage returned 403 "
+                    f"after {max_attempts} attempts"
+                ) from exc
+            raise RuntimeError(f"Download failed for {label}: HTTP {status or 'error'}") from exc
+        except (requests.ConnectionError, requests.Timeout, IOError, OSError) as exc:
+            last_error = exc
+            _cleanup_partial(part_path)
+            if attempt < max_attempts:
+                logger.warning(
+                    "%s: transient download failure (attempt %s/%s): %s",
+                    label,
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+                continue
+            raise RuntimeError(
+                f"Download failed for {label} after {max_attempts} attempts: {exc}"
+            ) from exc
+        except requests.RequestException as exc:
+            _cleanup_partial(part_path)
+            raise RuntimeError(f"Download failed for {label}: {exc}") from exc
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
-    raise RuntimeError(f"Download failed after {max_attempts} attempts: {last_error}") from last_error
+    raise RuntimeError(f"Download failed after {max_attempts} attempts: {last_error}")
 
 
 def download_model(
@@ -298,67 +348,51 @@ def download_model(
     cfg: Dict[str, Any],
     progress_callback: Optional[ProgressCallback] = None,
 ) -> None:
-    model_path = MODEL_DIR / cfg["file"]
-    _stream_download(model_key, cfg["url"], model_path, progress_callback=progress_callback)
-
-
-def filename_from_url(url: str) -> str:
-    """Derive a safe local filename from a download URL."""
-    name = url.rstrip("/").rsplit("/", 1)[-1].split("?", 1)[0]
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "custom-model.gguf"
-    if not name.lower().endswith(".gguf"):
-        name += ".gguf"
-    return name
+    filename = _safe_filename(str(cfg["file"]))
+    model_path = _confined_model_path(filename)
+    _stream_download(
+        model_key,
+        str(cfg["url"]),
+        model_path,
+        progress_callback=progress_callback,
+        expected_sha256=cfg.get("sha256"),
+    )
 
 
 def download_custom_model(
     url: str,
     filename: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
+    expected_sha256: Optional[str] = None,
 ) -> Path:
-    """Download an arbitrary .gguf URL (e.g. a HuggingFace 'resolve/main/...' link)
-    into MODEL_DIR. Returns the path the model was saved to."""
-    url = url.strip()
-    if not url:
-        raise ValueError("No URL provided.")
-    if not url.lower().startswith(("http://", "https://")):
-        raise ValueError("URL must start with http:// or https://")
-    if url.lower().startswith("http://"):
-        # Plain HTTP is permitted (some users have legitimate internal
-        # model mirrors that aren't served over TLS), but it's worth a
-        # warning: an on-path attacker could tamper with the file in
-        # transit. The GGUF header check on completion limits the blast
-        # radius to a file that at least looks like a model, but it can't
-        # detect a malicious-but-well-formed substitute - prefer https://
-        # when the source offers it.
-        logger.warning(
-            "Downloading over plain HTTP (not HTTPS): the file could be "
-            "tampered with in transit. Prefer an https:// URL if the source "
-            "offers one."
-        )
+    """Download one custom GGUF model from HTTPS into ``MODEL_DIR``."""
 
-    name = filename.strip() if filename else filename_from_url(url)
-    dest_path = MODEL_DIR / name
-    _stream_download(name, url, dest_path, progress_callback=progress_callback)
+    source_url = _validate_https_url(url)
+    name = _safe_filename(filename) if filename is not None else filename_from_url(source_url)
+    dest_path = _confined_model_path(name)
+    _stream_download(
+        name,
+        source_url,
+        dest_path,
+        progress_callback=progress_callback,
+        expected_sha256=expected_sha256,
+    )
     return dest_path
 
 
 def main(progress_callback: Optional[ProgressCallback] = None) -> Dict[str, Any]:
-    """Download all configured preset models.
-    Returns {model_key: {"success": bool, "error": Optional[str]}} for each.
-    """
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     results: Dict[str, Any] = {}
     for key, cfg in MODELS_CONFIG.items():
         try:
             download_model(key, cfg, progress_callback=progress_callback)
             results[key] = {"success": True, "error": None}
-        except Exception as e:
-            logger.error(f"Failed to download {key}: {e}")
-            results[key] = {"success": False, "error": str(e)}
+        except Exception as exc:
+            logger.error("Failed to download %s: %s", key, exc)
+            results[key] = {"success": False, "error": str(exc)}
     return results
 
 
