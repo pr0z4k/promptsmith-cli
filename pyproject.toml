@@ -1,18 +1,15 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "promptsmith-cli"
-# Single source of truth for the version. Everything else - the About
-# screen, --version, build script artifact names - reads this value at
-# install/build time. Bump it here and only here.
 version = "0.6.0b2"
 description = "PromptSmith-cli: a local-first prompt quality gateway. 100% open source, local only, zero commercial dependencies."
 authors = [{name = "Prozak"}]
 readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.10"
+license = "MIT"
+requires-python = ">=3.10,<3.15"
 keywords = ["prompt-engineering", "tui", "llm", "local-first", "textual"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -21,34 +18,44 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Text Processing",
 ]
 dependencies = [
-    "textual>=8.2,<9",
-    "pyyaml>=6.0.3",
-    "pyperclip>=1.11.0",
-    "psutil>=7.2.0",
-    "requests>=2.34.0",
-    "tqdm>=4.68.0",
+    "textual==8.2.8",
+    "PyYAML==6.0.3",
+    "pyperclip==1.11.0",
+    "psutil==7.2.2",
+    "requests==2.34.2",
+    "tqdm==4.69.0",
 ]
 
 [project.urls]
-Homepage = "https://codeberg.org/prozak/promptsmith-cli"
-Issues = "https://codeberg.org/prozak/promptsmith-cli/issues"
-Changelog = "https://codeberg.org/prozak/promptsmith-cli/src/branch/main/CHANGELOG.md"
+Homepage = "https://github.com/pr0z4k/promptsmith-cli"
+Issues = "https://github.com/pr0z4k/promptsmith-cli/issues"
+Changelog = "https://github.com/pr0z4k/promptsmith-cli/blob/main/CHANGELOG.md"
+Source = "https://github.com/pr0z4k/promptsmith-cli"
 
 [project.optional-dependencies]
-llm = ["llama-cpp-python>=0.3.30"]
+llm = ["llama-cpp-python==0.3.34"]
 dev = [
-    "pytest>=9.1.0",
-    "pytest-cov>=7.1.0",
-    "black>=26.5.0",
-    "isort>=8.0.0",
-    "ruff>=0.15.0",
-    "mypy>=2.3.0",
-    "pre-commit>=4.6.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "black==26.5.1",
+    "isort==8.0.1",
+    "ruff==0.15.22",
+    "mypy==2.3.0",
+    "pre-commit==4.6.0",
 ]
-build = ["pyinstaller>=6.21.0"]
+build = [
+    "build==1.3.0",
+    "pyinstaller==6.21.0",
+    "twine==6.2.0",
+]
 
 [project.scripts]
 promptsmith = "promptsmith.cli.app:main"
@@ -58,20 +65,19 @@ promptsmith-cli = "promptsmith.cli.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# Built-in profiles and templates ship inside the package
-# (src/promptsmith/data/), so plain wheel installs get them too - the
-# old top-level location was invisible to setuptools packaging.
 promptsmith = ["data/profiles/*.yaml", "data/templates/*.yaml"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310", "py311", "py312", "py313"]
+target-version = ["py310", "py311", "py312", "py313", "py314"]
 include = '\.pyi?$'
 exclude = '''
 /(
     \.git
     | \.hg
     | \.mypy_cache
+    | \.pytest_cache
+    | \.ruff_cache
     | \.tox
     | \.venv
     | _build
@@ -92,20 +98,20 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "F",   # Pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "W",   # pycodestyle warnings
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "Q",   # flake8-quotes
-    "RUF", # ruff-specific rules
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+    "UP",
+    "B",
+    "C4",
+    "Q",
+    "RUF",
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
-    "B008",  # do not perform function calls in argument defaults
+    "E501",
+    "B008",
 ]
 
 [tool.mypy]
@@ -116,3 +122,8 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+testpaths = ["src/tests"]
+addopts = ["--strict-config", "--strict-markers"]
