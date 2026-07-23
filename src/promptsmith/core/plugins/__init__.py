@@ -103,6 +103,8 @@ class BackendRegistry:
 
     @classmethod
     def create_instance(cls, name: str, **kwargs) -> Optional[ModelBackend]:
+        """Create a registered backend without exposing constructor details."""
+
         name = cls._validate_name(name)
         backend_cls = cls.get(name)
         if backend_cls is None:
@@ -113,5 +115,9 @@ class BackendRegistry:
         except Exception as exc:
             from ..exceptions import BackendError
 
-            logger.error("Failed to instantiate backend '%s': %s", name, exc)
+            logger.error(
+                "Failed to instantiate backend '%s' (%s)",
+                name,
+                type(exc).__name__,
+            )
             raise BackendError(f"Failed to instantiate backend '{name}'") from exc

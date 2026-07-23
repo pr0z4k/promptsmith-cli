@@ -2,11 +2,12 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from . import ModelBackend
 from .llm_backend import LLMBasedBackend
-from ..models import _apply_rules
+from .rule_backend import RuleBasedBackend
+from ..profile import RefinementProfile
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +17,28 @@ class HybridBackend(ModelBackend):
 
     MIN_LENGTH_RATIO = 0.25
 
-    def __init__(self, model_path: Optional[Path] = None):
-        self._llm_backend = LLMBasedBackend(model_path=model_path)
+    def __init__(
+        self,
+        model_path: Optional[Path] = None,
+        *,
+        rule_backend: Optional[ModelBackend] = None,
+        llm_backend: Optional[LLMBasedBackend] = None,
+    ):
+        if model_path is not None and llm_backend is not None:
+            raise ValueError("model_path and llm_backend cannot both be supplied")
+        self._rule_backend = rule_backend or RuleBasedBackend()
+        self._llm_backend = llm_backend or LLMBasedBackend(model_path=model_path)
         self.last_error: Optional[str] = None
 
     @property
     def model_path(self) -> Optional[Path]:
         return self._llm_backend.model_path
 
-    def refine(self, prompt: str, profile: Dict[str, Any]) -> Optional[str]:
-        rule_based_result = _apply_rules(prompt, profile)
+    def refine(self, prompt: str, profile: RefinementProfile) -> Optional[str]:
+        rule_based_result = self._rule_backend.refine(prompt, profile)
+        if rule_based_result is None:
+            self.last_error = self._rule_backend.last_error or "Rule refinement returned no result"
+            return None
 
         try:
             polished = self._llm_backend.refine(
@@ -58,3 +71,4 @@ class HybridBackend(ModelBackend):
 
     def unload(self) -> None:
         self._llm_backend.unload()
+        self._rule_backend.unload()
