@@ -1,251 +1,208 @@
 # PromptSmith-cli
 
-**A local-first Prompt Quality Gateway** - analyzes, challenges, and prepares
-your prompts before they consume AI tokens, so you spend compute on a
-well-formed request instead of a vague one.
+**A local-first prompt preflight tool for your terminal.** PromptSmith analyzes a prompt before it consumes AI tokens, scores its readiness, flags ambiguity and missing context, and can refine it using deterministic rules, a local small language model, or both.
 
-**100% Open Source · Local Only · Zero Commercial Dependencies**
+PromptSmith is not a prompt library, hosted AI service, or cloud wrapper. Its purpose is narrower: help you improve the prompt before you send it elsewhere.
 
-- Home: https://codeberg.org/prozak/promptsmith-cli
-- Issues / support: https://codeberg.org/prozak/promptsmith-cli/issues
-- History: [CHANGELOG.md](CHANGELOG.md)
+**Open source · Local-first · No telemetry · No required cloud service**
+
+- Source and issues: https://github.com/pr0z4k/promptsmith-cli
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Build instructions: [BUILD.md](BUILD.md)
 - License: MIT
 
-The version is defined once, in `pyproject.toml`, and flows automatically
-into the About screen, `--version`, and build artifact names - check
-`promptsmith --version` for what you're running.
+## Status
 
-## Quick start
+PromptSmith is preparing for its v1.0 release. The current package version remains defined in `pyproject.toml`; run `promptsmith --version` to see the installed version.
+
+## What it does
+
+```text
+Prompt → Analyze → Challenge → Refine → Copy or Export
+```
+
+- **Analyze** scores prompt readiness from 0 to 100 using deterministic checks.
+- **Challenge** surfaces rule-based questions for unclear scope, audience, success criteria, quantities, and integration constraints.
+- **Refine** applies a profile and optional template through one of three local backends.
+- **History** stores successful refinements locally in SQLite.
+- **Export** saves the current session or the complete local history.
+
+Analysis and challenge generation do not require an LLM.
+
+## Installation
+
+PromptSmith supports Python 3.10 through 3.14.
 
 From a source checkout:
 
 ```bash
-pip install -e .
+python -m pip install -e .
 promptsmith
 ```
 
-Once published on PyPI as `promptsmith-cli`:
+With local LLM support:
 
 ```bash
-pip install promptsmith-cli
-promptsmith        # or: promptsmith-cli - both launch the same app
+python -m pip install -e ".[llm]"
+promptsmith
 ```
 
-For a standalone executable that needs no Python install at all, see
-[BUILD.md](BUILD.md).
+The package exposes both `promptsmith` and `promptsmith-cli`; they launch the same application.
 
-## The pipeline
+Standalone executable builds are documented in [BUILD.md](BUILD.md).
 
-```
-Prompt -> Analyze -> Challenge -> Prepare -> Output
-```
+## Basic usage
 
-- **Analyze**: detects prompt type, scores readiness (0-100), flags
-  ambiguous terms ("modern", "best", "optimize"), and recommends a profile
-  - all deterministic, no LLM required, instant.
-- **Challenge**: a small set of rule-based clarifying questions surfaced
-  alongside the analysis - things like "what should actually vary here?"
-  or "who is this for?" when the prompt doesn't say. Informational only,
-  never blocks Refine, and applies identically no matter which profile,
-  template, or backend you're using. Deliberately not LLM-generated:
-  writing a genuinely useful clarifying question is a harder reasoning
-  task than rewriting a prompt, and small local models aren't reliable at
-  it - this only shows what a cheap, deterministic check can actually
-  catch.
-- **Prepare**: refines the prompt using your selected profile and
-  (optional) template, through whichever backend that profile is
-  configured to use.
+1. Enter a rough prompt.
+2. Press **Ctrl+A** to analyze it.
+3. Review the score, missing elements, prompt smells, and clarification questions.
+4. Select a profile and optional template.
+5. Press **Ctrl+R** to refine it.
+6. Press **Ctrl+Y** to copy the result.
 
-## Backends
+### Keyboard shortcuts
 
-Set per-profile via the `backend:` field (default `rule`):
+| Key | Action |
+|---|---|
+| Ctrl+A | Analyze |
+| Ctrl+R | Analyze and refine |
+| Ctrl+Y | Copy refined output |
+| Ctrl+S | Save configuration |
+| Ctrl+Q | Quit or go back |
+| Up / Down | Scroll output |
 
-| Backend  | What it does |
-|----------|--------------|
-| `rule`   | Deterministic template/constraint application. Instant, free, always available, and guarantees every constraint from the profile survives verbatim in the output. |
-| `llm`    | The local model rewrites the prompt directly, guided by the profile's role/domain/tone/format. More natural phrasing, but a small model can occasionally misunderstand the task or need a retry. |
-| `hybrid` | Runs `rule` first (guaranteeing completeness), then asks the LLM to polish that already-complete text into clearer prose - falls back to the pure rule-based text if the LLM is unavailable or the polish looks broken. |
+The main screen also provides buttons for Analyze, Refine, Copy, Clear, Export, History, and Settings.
 
-Whichever backend a profile uses, Analyze and Challenge behave identically -
-they run before a backend is ever selected.
+## Refinement backends
 
-## Usage
+Backends are selected per profile through the `backend` field.
 
-1. Enter a rough prompt in the input box (multi-line supported)
-2. **Ctrl+A** to analyze, or **Ctrl+R** to analyze + refine in one step
-3. Review the analysis: type, score, missing elements, smells, and
-   anything worth clarifying
-4. Select a profile (auto-recommended based on your prompt) and,
-   optionally, a template
-5. **Ctrl+R** to refine
-6. **Ctrl+Y** to copy the result
+| Backend | Behavior |
+|---|---|
+| `rule` | Deterministic refinement. Always local, fast, and available without a model. |
+| `llm` | Uses a local GGUF model through `llama-cpp-python` to rewrite the prompt. |
+| `hybrid` | Applies deterministic rules first, then asks the local model to polish the complete result. Falls back to the rule result if the model fails or returns unusable output. |
 
-## Keyboard shortcuts
-
-| Key      | Action          |
-|----------|-----------------|
-| Ctrl+A   | Analyze only    |
-| Ctrl+R   | Refine (analyze + prepare) |
-| Ctrl+Y   | Copy result     |
-| Ctrl+S   | Save config     |
-| Ctrl+Q   | Quit (or Back, on Settings) |
-| ↑ / ↓    | Scroll the output box |
-
-Buttons for Refine, Copy, Clear (wipes the input - there's no select-all
-in the text box), Export, Analyze, History, and Settings sit below the
-input box. On a narrow terminal the button row wraps onto a second line
-so every button stays reachable.
-
-## Look and feel
-
-The public release renders black-on-green, in the spirit of a
-green-phosphor terminal. If you're staring at green shades, you're
-running the open-source PromptSmith-cli build.
-
-## Prompt history
-
-Every successful refine (Ctrl+R) is recorded to a local SQLite database,
-so you build up a running record of what you asked, what the analyzer
-flagged, and what came back. Open it with the **[ History ]** button on
-the main screen.
-
-The history browser shows your entries newest-first in a grid, with a
-preview of the highlighted row and these actions:
-
-- **Copy Refined** - copy the selected entry's refined output to the
-  clipboard
-- **Delete** - remove the selected entry
-- **Export JSON** / **Export CSV** - write the *entire* history to a file
-  under `exports/` (JSON preserves the full nested analysis; CSV flattens
-  the key fields plus a raw-JSON column, so it opens cleanly in a
-  spreadsheet)
-- **Clear All** - wipe the history. This is a two-step action: the first
-  press arms it (the button changes to "Confirm Clear?"), and only a
-  second press actually deletes, so a misclick can't wipe your history.
-  Pressing any other button cancels. There's no automatic size cap, so
-  Clear All is how you reset.
-
-The database lives in the user data directory
-(`~/.promptsmith/history.db` from source, or `user_data/history.db` next
-to the executable in a portable build) and uses Python's standard-library
-`sqlite3` - no third-party dependency. History is best-effort: if the
-database can't be opened, the feature disables itself and the rest of the
-app is unaffected.
-
-A note on privacy and retention: history is stored **unencrypted** in the
-local SQLite file, and it keeps your full prompt text and refined output
-in plaintext. That's a deliberate local-first tradeoff (the data never
-leaves your machine, and a plain file is inspectable and portable), but it
-means anyone with read access to your user directory can read your prompt
-history. There is no automatic retention limit or expiry yet - the file
-grows until you Clear All (or delete `history.db` directly). If you work
-with sensitive prompts on a shared machine, clear your history when you're
-done, or delete the database file.
-
-## Settings
-
-- **Export Source Code** - the project's source, packaging files
-  (`pyproject.toml`, build scripts), and docs, ready to hand to someone
-  to build themselves or move to another machine. This is source for
-  rebuilding, not a runnable application on its own - it doesn't include
-  a Python runtime or compiled dependencies. For an actual standalone
-  executable, see [BUILD.md](BUILD.md). Excludes `.venv`, `__pycache__`,
-  downloaded models, and prior exports.
-- **Export Profiles** / **Export Templates** - the data, zipped,
-  including any user overrides/additions (see below), not just what
-  ships built-in.
-- **Download LLM Models** - the built-in presets (see below), or **Download
-  From URL** for any other direct `.gguf` link
-- **Model Status** - what's downloaded on disk, and what backend/model
-  actually served your last refinement
-- **About** - product, version (read live from the package metadata),
-  project link, license, and a Get Support button that opens the issue
-  tracker
-
-On the main screen, **[ Export ]** is different from the above - it saves
-your *current session* (the prompt you're working on, the profile/template
-used, and the refined output) to a timestamped markdown file, not the
-source code.
+Backend instances are owned and reused by the refiner so heavyweight local models are not reconstructed for every request.
 
 ## Profiles and templates
 
-35 profiles and 22 templates ship built-in, covering software
-engineering, cloud, architecture, business, and content roles - from
-`react-developer` and `cloud-engineer-aws` to `technical-writer` and
-`vibe-coding` (general AI-assisted software engineering).
+Built-in profiles and templates ship inside `src/promptsmith/data/`.
 
-Built-ins live inside the package (`src/promptsmith/data/`); in a
-standalone build they appear as visible `profiles/` and `templates/`
-folders next to the executable.
+User-owned files belong in:
 
-Two ways to add your own:
-
-- **Built-in directories** - drop a `.yaml` file in and restart. Simple,
-  but anything added here is lost the next time the app is updated or
-  rebuilt from a fresh copy.
-- **User directory** (`~/.promptsmith/profiles/`,
-  `~/.promptsmith/templates/`; in a standalone build, the `user_data/`
-  folder next to the executable) - the same idea, but this survives
-  updates. A file here with the *same name* as a built-in profile
-  overrides it (lets you customize `vibe-coding` without touching the
-  shipped copy); a file with a new name is simply added alongside the
-  built-in ones. This is the recommended place for anything you want to
-  keep long-term.
-
-Templates should use a single `{placeholder}` - the UI has one input
-field, so a template with multiple distinct placeholders will have all
-of them filled with the same text.
-
-## LLM support (optional)
-
-Install the LLM extra, then download a model (Settings > Download LLM
-Models, or Settings > Download From URL for a custom `.gguf`):
-
-```bash
-pip install -e ".[llm]"
+```text
+~/.promptsmith/profiles/
+~/.promptsmith/templates/
 ```
 
-On Windows, if pip tries to compile llama-cpp-python from source and
-fails, install a prebuilt CPU wheel instead:
+In portable builds, they live under the `user_data/` directory next to the executable.
 
-```bash
-pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+A user file with the same name as a built-in file overrides the built-in version without modifying package data. This is the recommended customization path because it survives upgrades.
+
+A profile may define:
+
+```yaml
+name: Example Developer
+role: Senior software engineer
+domain:
+  - Python
+  - CLI applications
+tone: Technical and concise
+format: Markdown
+constraints:
+  - Include tests.
+backend: hybrid
 ```
 
-The default preset is **Phi-4-mini-instruct** (Q4_K_M, ~2.5GB) - Microsoft's
-small instruct model, MIT-licensed. A TinyLlama 1.1B preset is also
-available for lower-resource machines.
+Templates may use placeholders such as `{topic}`. Because the UI supplies one input value, multiple placeholders are filled from that same input.
 
-By default the LLM backend auto-detects the first `.gguf` file in
-`models/`. To pin a specific model explicitly, set `llm.model_path` in
-`config.yaml`. Set a profile's `backend: llm` or `backend: hybrid` to route
-its refinements through the local model.
+## Local LLM support
 
-Note: there's no RAM/resource check before loading a model - make sure your
-machine has enough free memory for whichever `.gguf` you're using.
+PromptSmith uses GGUF models through `llama-cpp-python`.
 
-Downloaded models are validated by their GGUF header (the format's magic
-number), so a URL that returns an error page, an empty response, or an
-otherwise non-GGUF file is rejected up front rather than failing later
-inside the model loader. This is a fast 4-byte header check, not a full
-content hash: it catches files that aren't GGUF at all, but not a file
-that starts with a valid header and is then truncated or corrupted
-further in - detecting that would need a full content hash (a possible
-future addition). Custom downloads over plain `http://` are permitted but
-warn, since the file can't be verified against tampering in transit;
-prefer `https://` when the source offers it.
+Models can be downloaded from the Settings screen or placed in the model directory manually. The default preset is Phi-4-mini-instruct Q4_K_M; TinyLlama is available for lower-resource systems.
+
+Model downloads are hardened as follows:
+
+- HTTPS is required for the initial URL and every redirect.
+- Embedded credentials, malformed hosts, fragments, and control characters are rejected.
+- Partial files are written separately and promoted atomically.
+- Existing symlink targets are rejected.
+- File size and GGUF magic are validated before promotion.
+- Optional SHA-256 validation is supported when a checksum is available.
+- Transient network and server failures use bounded retries.
+
+The model loader validates that a configured file is a regular, non-symlinked `.gguf` file with a valid header and a plausible minimum size.
+
+PromptSmith does not guarantee that every GGUF model will fit into available memory. If model loading or inference runs out of memory, the model is unloaded and the application continues with a safe failure or deterministic fallback.
+
+### Windows installation note
+
+If `llama-cpp-python` attempts a local compile and fails, install a compatible prebuilt wheel for your system. Wheel availability and supported indexes change over time, so consult the llama-cpp-python project documentation rather than relying on one permanently correct command, because apparently packaging native Python extensions remains a cultural experiment.
+
+## Privacy and data storage
+
+PromptSmith does not send prompts, generated output, analytics, or telemetry to a hosted PromptSmith service.
+
+Prompt and output text are excluded from diagnostic logs. Logs contain operational metadata and sanitized failure summaries.
+
+Successful refinements are stored in a local SQLite history database unless history is unavailable. The database contains the original prompt and refined output in plaintext.
+
+Default locations:
+
+```text
+Source or wheel install: ~/.promptsmith/history.db
+Portable build:          user_data/history.db
+```
+
+Anyone with read access to that file can read its contents. There is currently no automatic retention period. Use History → Clear All or delete the database when local retention is not appropriate.
+
+SQLite history uses WAL mode, lock waiting, integrity checks, and corruption quarantine. If the active database is corrupt, PromptSmith preserves the corrupt file and creates a clean replacement rather than deleting evidence or disabling history indefinitely.
+
+## Configuration and exports
+
+Application configuration, profiles, templates, model downloads, and history exports use confined paths and atomic writes. PromptSmith rejects traversal names and symlinked write targets.
+
+History can be exported as JSON or CSV. The current working session can be exported separately as Markdown.
 
 ## Development
 
+Install development dependencies:
+
 ```bash
-pip install -e ".[dev]"
-python -m pytest src/tests    # full regression suite
+python -m pip install -e ".[dev]"
 ```
 
-## Architecture
+Run the local quality checks:
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for design decisions, and
-[CHANGELOG.md](CHANGELOG.md) for the full fix/feature history.
+```bash
+python -m pytest src/tests
+ruff check src
+black --check src
+isort --check-only src
+mypy src/promptsmith
+python -m build
+python -m twine check dist/*
+```
+
+GitHub Actions runs the supported Python and packaging matrix when account minutes are available. Local checks remain the required fallback when hosted Actions cannot start.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common failures.
+
+## Architecture and security boundaries
+
+Important design constraints:
+
+- Prompt analysis is deterministic and local.
+- Runtime network access is confined to the reviewed model downloader.
+- Backends are explicitly registered in-process; arbitrary module discovery is not supported.
+- Runtime subprocess and shell execution are not part of the audited application boundary.
+- Backend errors are sanitized before being shown to users.
+- LLM lifecycle ownership belongs to the refiner and composed backends.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and the architecture decision records under `docs/adr/`.
 
 ## License
 
