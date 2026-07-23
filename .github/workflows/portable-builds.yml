@@ -8,6 +8,7 @@ on:
       - "build_windows.bat"
       - "pyproject.toml"
       - "src/**"
+      - "tools/prepare_portable_artifact.py"
       - ".github/workflows/portable-builds.yml"
   push:
     tags:
@@ -75,29 +76,8 @@ jobs:
         if: runner.os == 'Windows'
         run: cmd /c build_windows.bat
 
-      - name: Verify ZIP exists
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          archives = sorted(Path("dist").glob("PromptSmith-cli-*.zip"))
-          if len(archives) != 1:
-              raise SystemExit(f"Expected exactly one portable ZIP, found: {archives}")
-          print(archives[0])
-          PY
-
-      - name: Generate checksum
-        run: |
-          python - <<'PY'
-          import hashlib
-          from pathlib import Path
-
-          archive = next(Path("dist").glob("PromptSmith-cli-*.zip"))
-          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-          checksum = archive.with_suffix(archive.suffix + ".sha256")
-          checksum.write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
-          print(checksum.read_text(encoding="utf-8"), end="")
-          PY
+      - name: Verify portable ZIP and generate checksum
+        run: python tools/prepare_portable_artifact.py
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
