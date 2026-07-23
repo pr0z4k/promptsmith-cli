@@ -23,7 +23,7 @@ Every AI conversation starts with a prompt.
 
 Most prompts are written in a hurry. They are vague, underspecified, missing context, or quietly depend on assumptions that exist only inside the author's head. The model then produces a mediocre answer and everyone begins the traditional ritual of regenerating it five times.
 
-PromptSmith interrupts that cycle.
+PromptSmith breaks this cycle.
 
 Instead of fixing a bad response after the fact, it performs a local preflight before the prompt reaches ChatGPT, Claude, Gemini, Copilot, a local model, or whatever impressive new autocomplete has appeared this week.
 
@@ -50,9 +50,9 @@ Optional refinement
 A better prompt
 ```
 
-AI models are becoming cheaper. Human attention is not.
+AI models are becoming cheaper (sort of...). Human attention is not.
 
-Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes negotiating with a poor response.
+Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes runing adversary network mental frameworks with a poor response.
 
 ## PromptSmith is not
 
@@ -68,7 +68,7 @@ It is not:
 - an MCP client
 - a replacement for the model that will actually do the work
 
-PromptSmith is a **prompt quality gateway**. It prepares a prompt, then gets out of the way. Software is allowed to have boundaries. We checked.
+PromptSmith is a **prompt quality gateway**. It prepares a prompt, then gets out of the way. Software is allowed to have boundaries and roles.
 
 ## Design principles
 
@@ -82,13 +82,13 @@ The analyzer does not need a model to tell you that a prompt lacks context, cons
 
 ### Terminal native
 
-PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume.
+PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume, besides, it looks cool.
 
 ### One job, done properly
 
 PromptSmith improves prompts. Features that do not serve that job should have an excellent argument before they are allowed through the door.
 
-### Human time matters more than token theater
+### Human time matters more than tokens
 
 Saving tokens is useful. Saving attention, retries, and frustration is better.
 
@@ -376,9 +376,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - reproducible lockfiles and builds
 - SBOM generation
 - signed release artifacts
-- macOS notarization and Windows signing
+- macOS notarization and Windows signing (like in a looong time)
 
-The roadmap is intentionally modest. PromptSmith is not applying for permission to become an operating system.
+The roadmap is intentionally modest. PromptSmith is your helper, not GLaDOS.
 
 ## Release information
 
