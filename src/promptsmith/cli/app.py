@@ -22,6 +22,9 @@ from textual import events, work
 from promptsmith._version import PRODUCT_NAME, PROJECT_URL, SUPPORT_URL, __version__, display_version
 from promptsmith.utils.path_utils import get_asset_path, get_project_root, get_user_data_dir
 
+from promptsmith.core.runtime_model_fixes import configure_runtime_model_behavior
+from promptsmith.scripts.model_catalog import configure_model_catalog
+
 # Configure logging: write to a log file, never to the terminal.
 # Textual takes exclusive control of the terminal (alternate screen buffer);
 # a StreamHandler writing to stdout/stderr bypasses Textual's rendering
@@ -337,13 +340,14 @@ class PromptSmithApp(App):
         height: auto;
     }
     """
-
+    
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+enter", "analyze", "Analyze"),
         Binding("ctrl+r", "refine", "Refine"),
+        Binding("ctrl+shift+a", "select_prompt_all", "Select Prompt"),
         Binding("ctrl+y", "copy", "Copy"),
         Binding("ctrl+s", "save_config", "Save Config"),
-        Binding("ctrl+a", "analyze", "Analyze"),
         Binding("down", "scroll_down", "Scroll Down"),
         Binding("up", "scroll_up", "Scroll Up"),
     ]
@@ -580,12 +584,17 @@ class PromptSmithApp(App):
     def _update_analysis_display(self) -> None:
         """Update the analysis display widgets based on current_analysis."""
         try:
+
             if self.current_analysis is None:
-                self._analysis_output.update("Enter a prompt and press [Analyze] or [Refine]")
+                self._analysis_output.update(
+                    Content(
+                        "Enter a prompt, then press Ctrl+Enter to analyze or Ctrl+R to refine. "
+                        "Use Ctrl+Shift+A to select the whole prompt."
+                    )
+                )
                 self._readiness_indicator.update("")
                 self._readiness_indicator.remove_class("not_ready")
                 return
-            
             # Build analysis display text
             lines = []
             
@@ -951,6 +960,18 @@ class PromptSmithApp(App):
             select.value = self.current_profile
         except Exception as e:
             logger.error(f"Failed to refresh profile list: {e}")
+
+    def action_select_prompt_all(self) -> None:
+        """Select the complete prompt without relying on terminal Cmd+A."""
+
+        self._prompt_input.focus()
+        select_all = getattr(self._prompt_input, "action_select_all", None)
+
+        if callable(select_all):
+            select_all()
+            self.status_message = "Prompt selected."
+        else:
+            self.status_message = "Select All is unavailable in this Textual version."
 
     def action_history(self) -> None:
         if getattr(self, "_refine_in_progress", False):
@@ -2079,18 +2100,22 @@ class ProfileEditorScreen(Screen):
 def main() -> None:
     import sys as _sys
 
+    configure_model_catalog()
+    configure_runtime_model_behavior()
+
     if "--version" in _sys.argv or "-V" in _sys.argv:
         # Machine-checkable version output, also used by the build
         # scripts' post-build smoke test.
         print(f"{PRODUCT_NAME} {__version__} ({display_version()})")
         return
+
     try:
         PromptSmithApp().run()
     except KeyboardInterrupt:
         print("\nGoodbye!")
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Fatal error in PromptSmith-cli")
-        print(f"Error: {e}")
+        print(f"Error: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
