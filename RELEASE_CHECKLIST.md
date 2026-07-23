@@ -6,6 +6,20 @@ This checklist is the release gate for PromptSmith-cli 1.0. A checked item means
 
 The `pr0z4k` account has consumed 100% of its included GitHub Actions minutes. GitHub-hosted jobs may fail before creating steps or logs. Until minutes reset or paid capacity is enabled, local validation is authoritative and must record the operating system, Python version, command, and result.
 
+## Reproducible local gate
+
+From a clean virtual environment:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,build]"
+python tools/validate_release.py --keep-going
+```
+
+The validator runs Ruff, Black, isort, mypy, pytest, package build, `twine check`, and a clean-wheel installation smoke test. It writes `release-validation.json` containing the candidate commit, Python runtime, operating system, commands, durations, and results. Do not commit reports containing machine-specific paths unless they have been reviewed first.
+
+The validator is the baseline gate for one interpreter and platform. It does not replace the manual functional, LLM, platform, or frozen-build checks below.
+
 ## Candidate identity
 
 - [ ] Candidate commit SHA recorded
@@ -17,11 +31,9 @@ The `pr0z4k` account has consumed 100% of its included GitHub Actions minutes. G
 
 ## Static quality checks
 
-Run from a clean virtual environment:
+The validator runs:
 
 ```bash
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
 python -m ruff check src
 python -m black --check src
 python -m isort --check-only src
@@ -38,11 +50,14 @@ python -m pytest src/tests
 
 ## Package validation
 
+The validator removes any existing `dist/` directory before building, then runs:
+
 ```bash
-python -m pip install -e ".[build]"
 python -m build
-python -m twine check dist/*
+python -m twine check <each generated artifact>
 ```
+
+It also creates a temporary virtual environment, installs the generated wheel, verifies `--version`, and confirms packaged profiles are discoverable.
 
 - [ ] Source distribution builds
 - [ ] Wheel builds
@@ -50,7 +65,7 @@ python -m twine check dist/*
 - [ ] Wheel contents include built-in profiles and templates
 - [ ] Clean-environment wheel installation succeeds
 - [ ] First and second launches retain built-in profiles and templates
-- [ ] Console commands launch from the installed wheel
+- [ ] Both console commands launch from the installed wheel
 
 ## Functional acceptance
 
