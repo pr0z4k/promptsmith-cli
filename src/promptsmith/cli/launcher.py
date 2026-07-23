@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 
 from textual.binding import Binding
@@ -11,6 +12,8 @@ from promptsmith._version import PRODUCT_NAME, __version__, display_version
 from promptsmith.cli.app import PromptSmithApp as BasePromptSmithApp
 from promptsmith.core.runtime_model_fixes import configure_runtime_model_behavior
 from promptsmith.scripts.model_catalog import configure_model_catalog
+
+logger = logging.getLogger(__name__)
 
 
 class PromptSmithApp(BasePromptSmithApp):
@@ -63,7 +66,8 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nGoodbye!")
     except Exception as exc:
-        print(f"Error: {type(exc).__name__}")
+        logger.exception("Fatal error in PromptSmith-cli")
+        print(f"Error: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
