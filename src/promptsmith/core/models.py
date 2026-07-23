@@ -1,15 +1,15 @@
-"""
-Core models for PromptSmith-cli.
-"""
+"""Core deterministic refinement helpers for PromptSmith-cli."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
+
+from .profile import RefinementProfile
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_rules(prompt: str, profile: Dict[str, Any]) -> str:
-    """Apply deterministic prompt-improvement rules guided by a profile dict."""
+def _apply_rules(prompt: str, profile: RefinementProfile) -> str:
+    """Apply deterministic prompt-improvement rules guided by a profile."""
     if not prompt:
         return prompt
     if not profile:
@@ -41,18 +41,12 @@ def _apply_rules(prompt: str, profile: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-def _ensure_content_completeness(result: str, profile: Dict[str, Any]) -> str:
-    """Guarantee a profile's required domain areas and constraints survive
-    into already-generated *content* (as opposed to _apply_rules, which
-    frames a raw *prompt* headed into a backend).
+def _ensure_content_completeness(result: str, profile: RefinementProfile) -> str:
+    """Preserve required profile content in an already-generated result.
 
-    Deliberately narrower than _apply_rules: it only appends domain terms
-    and constraints that are genuinely missing (a no-op for content that
-    already covers them). It never appends role/tone/format framing
-    sentences like "Act as if I am {role}." or "Use a {tone} tone." -
-    those are instructions you give a model before generation, and make no
-    sense tacked onto the end of finished code or prose. Appending them
-    there previously leaked raw profile/persona text into visible output.
+    This is deliberately narrower than ``_apply_rules``: it only appends missing
+    domain terms and constraints. Role, tone, and output-format instructions belong
+    before generation and must not leak into finished content.
     """
     if not result or not profile:
         return result
