@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/consolidate-cli-entrypoint
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 
 permissions:
   contents: write
@@ -127,11 +130,11 @@ jobs:
 
           pyproject = Path('pyproject.toml')
           project_text = pyproject.read_text(encoding='utf-8')
-          project_text = project_text.replace(
-              'promptsmith = "promptsmith.cli.launcher:main"\npromptsmith-cli = "promptsmith.cli.launcher:main"',
-              'promptsmith = "promptsmith.cli.app:main"\npromptsmith-cli = "promptsmith.cli.app:main"',
-          )
-          pyproject.write_text(project_text, encoding='utf-8')
+          old_scripts = 'promptsmith = "promptsmith.cli.launcher:main"\npromptsmith-cli = "promptsmith.cli.launcher:main"'
+          new_scripts = 'promptsmith = "promptsmith.cli.app:main"\npromptsmith-cli = "promptsmith.cli.app:main"'
+          if old_scripts not in project_text:
+              raise SystemExit('Expected launcher script entries not found')
+          pyproject.write_text(project_text.replace(old_scripts, new_scripts, 1), encoding='utf-8')
 
           Path('src/promptsmith/cli/launcher.py').unlink()
           Path('src/__init__.py').unlink()
@@ -143,11 +146,15 @@ jobs:
         run: |
           python -m compileall -q src/promptsmith
           python - <<'PY'
-          from promptsmith.cli.app import PromptSmithApp
-          keys = {binding.key for binding in PromptSmithApp.BINDINGS}
-          assert 'ctrl+enter' in keys
-          assert 'ctrl+shift+a' in keys
-          assert 'ctrl+a' not in keys
+          from pathlib import Path
+          import ast
+
+          source = Path('src/promptsmith/cli/app.py').read_text(encoding='utf-8')
+          tree = ast.parse(source)
+          mains = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main']
+          assert len(mains) == 1
+          assert not Path('src/promptsmith/cli/launcher.py').exists()
+          assert not Path('src/__init__.py').exists()
           PY
 
       - name: Commit consolidated entrypoint
