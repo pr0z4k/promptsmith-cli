@@ -1,192 +1,330 @@
-# Building PromptSmith-cli - Standalone Executables
+# Building PromptSmith-cli standalone packages
 
-This produces a self-contained folder for macOS, Linux, or Windows with
-everything needed to run. The layout is deliberate:
+**Last reviewed:** 2026-07-23  
+**Applies to version:** v1 release candidate
 
-```
-PromptSmith-cli-<version>-<platform>/
-├── PromptSmith-cli(.exe)            <- the executable
-├── Start PromptSmith-cli.command/.bat   <- double-click launcher
-├── profiles/                        <- visible, edit or add .yaml files directly
-├── templates/                       <- same
-├── models/                          <- drop in additional .gguf files directly
+PromptSmith-cli can be packaged as a self-contained folder and ZIP for macOS, Linux, or Windows. The recipient does not need Python, pip, Git, or a compiler.
+
+The portable layout is intentional:
+
+```text
+PromptSmith-cli-<version>-<platform>-<arch>/
+├── PromptSmith-cli(.exe)                 # executable
+├── platform launcher (.command/.sh/.bat)
+├── profiles/                             # editable built-in profiles
+├── templates/                            # editable built-in templates
+├── models/                               # bundled or user-added GGUF files
 ├── config.yaml
 ├── READ ME FIRST.txt
-└── _internal/                       <- Python runtime + dependencies only
+├── user_data/                            # created at runtime
+└── _internal/                            # Python runtime and dependencies
 ```
 
-`profiles/`, `templates/`, `models/`, and `config.yaml` sit at the top
-level, visible and directly editable with nothing more than a text editor
-- no digging into PyInstaller's internals, no rebuild needed to add a
-profile or drop in another model. Everything else needed to actually run
-(the Python interpreter, compiled dependencies like llama-cpp-python) is
-bundled separately in `_internal/`, which isn't meant to be touched.
+Keep the whole folder together. The executable depends on `_internal/` and the adjacent data folders.
 
-The person you hand this to needs nothing installed - unzip, double-click,
-done.
+## Platform rule
 
-**PyInstaller does not cross-compile.** Build the macOS executable on a
-Mac, and the Windows executable on a Windows machine. There's no way
-around this from a single machine - the two scripts below are meant to be
-run separately, one per platform, by whoever has access to that OS.
+PyInstaller does not cross-compile.
 
-## Versioning - one place, bumped everywhere
+- Build macOS artifacts on macOS.
+- Build Linux artifacts on Linux.
+- Build Windows artifacts on Windows.
+- Build separately for each required architecture.
 
-The version is defined once, in `pyproject.toml`. Both build scripts read
-it from there via `tools/get_version.py`, so the artifact folder and zip
-names track it automatically. The frozen app reports the same value at
-runtime because the scripts pass `--copy-metadata promptsmith-cli` -
-PyInstaller bundles the installed package's metadata, and the app reads it
-back through `importlib.metadata` (see `src/promptsmith/_version.py`).
-The About screen and `--version` are both fed from that single value.
+A macOS Apple Silicon artifact will not run on Windows, Linux, or an Intel-only Mac. Label release files with both platform and architecture.
 
-To cut a new version: bump `pyproject.toml`, `pip install -e .` (refreshes
-the metadata), rebuild. Nothing else to touch.
+## Versioning
 
-## Before you build (on each machine)
+The version is defined in `pyproject.toml`. The build scripts read it through `tools/get_version.py`, include package metadata in the frozen application, and use it in output folder and ZIP names.
 
-1. **Set up a virtual environment** - some Python installs (Homebrew on
-   recent macOS, some Linux distros) refuse a plain `pip install` outside
-   one:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate          # Windows: .venv\Scripts\activate
-   ```
-2. **Install with the LLM extra**, so llama-cpp-python's compiled bindings
-   get bundled in:
-   ```bash
-   pip install -e ".[llm]"
-   ```
-   **Windows note:** llama-cpp-python may try to compile from source and
-   fail if no C++ toolchain is present. Install a prebuilt CPU wheel
-   instead:
-   ```bat
-   pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-   ```
-   If it installs but then fails to *import*, the machine is missing the
-   Microsoft Visual C++ Redistributable (x64), which llama.cpp's DLLs
-   link against: https://aka.ms/vs/17/release/vc_redist.x64.exe
-3. **Download whichever model(s) you want shipped.** Run `promptsmith`,
-   go to Settings > Download LLM Models, and download Phi-4-mini-instruct
-   (or whatever you want bundled). The build script picks up whatever's
-   sitting in `models/` at build time - nothing is downloaded
-   automatically by the script itself. If you skip this, the build still
-   works, but only the `rule` backend will function (no `llm`/`hybrid`
-   profiles) until a model is added.
+After changing the version:
 
-## Building
+```sh
+python -m pip install -e .
+```
 
-### macOS / Linux
-```bash
+Verify before building:
+
+```sh
+promptsmith --version
+```
+
+## Prepare the build machine
+
+Run from the repository root.
+
+### macOS or Linux
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[build]"
+```
+
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[build]"
+```
+
+The standard PromptSmith installation already includes `llama-cpp-python`; the historical `[llm]` extra is no longer required.
+
+### Windows native-runtime note
+
+If `llama-cpp-python` fails to install from source, install the prebuilt CPU wheel:
+
+```powershell
+python -m pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+```
+
+If importing `llama_cpp` fails after installation, install the Microsoft Visual C++ Redistributable for x64. Do this on the build machine before creating an artifact so the build preflight can detect a working native runtime.
+
+## Decide whether to bundle models
+
+Run PromptSmith and use **Settings -> Download LLM Models** before building.
+
+The scripts copy the current contents of `models/` into the portable folder.
+
+| Build choice | Result |
+|---|---|
+| Bundle Phi-4-mini | Larger ZIP; Rules, LLM, and Hybrid work immediately |
+| Bundle TinyLlama | Smaller model footprint; lower refinement quality |
+| Bundle both | Largest ZIP; recipient can switch models immediately |
+| Bundle no model | Smallest ZIP; Rules work immediately and models can be downloaded later |
+
+Models are large. Consider publishing two artifacts:
+
+- a smaller base ZIP without models
+- a ready-to-run ZIP with the recommended model bundled
+
+Do not use PyInstaller `--onefile` for model-bearing builds. A one-file package would re-extract multi-gigabyte content on every launch. PromptSmith uses `--onedir` so extraction happens once, at build time.
+
+## Build commands
+
+### macOS
+
+```sh
 ./build_cli.sh
 ```
-Produces `dist/PromptSmith-cli-<version>-<platform>-<arch>/`, zipped
-alongside it. Inside: `PromptSmith-cli` (the binary), a double-click
-launcher (`Start PromptSmith-cli.command` on macOS,
-`start-promptsmith-cli.sh` on Linux), and `READ ME FIRST.txt` (macOS).
+
+Expected artifacts:
+
+```text
+dist/PromptSmith-cli-<version>-macos-<arch>/
+dist/PromptSmith-cli-<version>-macos-<arch>.zip
+```
+
+The folder includes `PromptSmith-cli`, `Start PromptSmith-cli.command`, and `READ ME FIRST.txt`.
+
+### Linux
+
+```sh
+./build_cli.sh
+```
+
+Expected artifacts:
+
+```text
+dist/PromptSmith-cli-<version>-linux-<arch>/
+dist/PromptSmith-cli-<version>-linux-<arch>.zip
+```
+
+The folder includes `PromptSmith-cli` and `start-promptsmith-cli.sh`.
 
 ### Windows
+
+Run from Command Prompt or PowerShell:
+
 ```bat
 build_windows.bat
 ```
-Produces `dist\PromptSmith-cli-<version>-windows-x64\`, zipped alongside
-it. Inside: `PromptSmith-cli.exe`, `Start PromptSmith-cli.bat` (the
-double-click launcher), and `READ ME FIRST.txt`.
 
-## How llama-cpp-python is bundled (and why it used to break)
+Expected artifacts:
 
-llama-cpp-python ships its compiled engine (`llama.dll`/`ggml*.dll` on
-Windows, `libllama.so`/`.dylib` elsewhere) as *package data*, which
-PyInstaller's static import analysis does not reliably discover. A build
-missing those libraries looks fine and only fails later, at first LLM
-use, on someone else's machine. Both scripts now close this end to end:
+```text
+dist\PromptSmith-cli-<version>-windows-x64\
+dist\PromptSmith-cli-<version>-windows-x64.zip
+```
 
-1. **Pre-flight import check** - the script verifies `import llama_cpp`
-   actually works *before* building. On Windows this immediately catches
-   the two common failure modes (broken source build, missing VC++
-   redistributable) with specific fix instructions, instead of shipping
-   a build that carries the problem.
-2. **`--collect-all llama_cpp`** - collects the entire package, compiled
-   libraries and metadata included, rather than trusting import analysis.
-3. **Post-build bundle check** - after building, the script confirms the
-   native library actually landed in `_internal/llama_cpp/` and warns if
-   it didn't.
+The folder includes `PromptSmith-cli.exe`, `Start PromptSmith-cli.bat`, and `READ ME FIRST.txt`.
 
-If llama-cpp-python isn't installed, the scripts say so and offer to
-continue with a rule-backend-only build rather than failing outright.
+## What the scripts verify
 
-## Post-build smoke test
+The native build scripts perform these checks:
 
-Both scripts finish by running the frozen executable with `--version` and
-checking the output against the pyproject version. This catches the two
-most common frozen-build failures on the build machine instead of the
-recipient's: import-time crashes, and missing bundled metadata (which
-would make the app misreport its version).
+1. Read the package version from `pyproject.toml`.
+2. Verify `llama_cpp` imports before packaging.
+3. Build with PyInstaller in `--onedir` mode.
+4. Collect the full `llama_cpp` package, including native libraries.
+5. Copy profiles, templates, configuration, and current models.
+6. Confirm native llama.cpp libraries are present under `_internal/`.
+7. Run the frozen executable with `--version`.
+8. Compare frozen output with the package version.
+9. Create the distributable ZIP.
 
-## Why `--onedir`, not `--onefile`
+A build that passes only PyInstaller compilation is not sufficient. The post-build smoke test matters because native library or metadata omissions often appear only when the frozen executable starts.
 
-A `--onefile` build re-extracts its entire contents to a fresh temp
-directory on *every single launch*. With a multi-gigabyte `.gguf` model
-bundled in, that means a multi-GB copy operation every time someone opens
-the app. `--onedir` unpacks once, at build time, and every launch after
-that just reads files directly off disk. Both scripts use `--onedir` for
-this reason - don't switch to `--onefile` if models are going to be
-bundled.
+## Verify the artifact before sharing
 
-## Distributing the build
+Test the extracted ZIP on the build machine, not only the uncompressed build directory.
 
-Zip the whole output folder (both scripts already do this for you) and
-hand it over. The recipient:
-1. Unzips it
-2. Double-clicks the launcher
+### Basic verification
 
-**First launch will almost certainly trigger a security prompt** - this
-is expected for software that isn't signed with a paid Apple Developer
-certificate or Windows code-signing certificate, not a bug in the build:
+1. Extract the generated ZIP into a new temporary directory.
+2. Launch using the included platform launcher.
+3. Confirm the About screen reports the expected version.
+4. Analyze a prompt with `Ctrl+Enter`.
+5. Refine with Rules.
+6. If a model is bundled, test LLM and Hybrid.
+7. Switch models during the same session when more than one is bundled.
+8. Close and reopen the application.
+9. Confirm `user_data/` and history behavior are writable.
 
-- **macOS (Gatekeeper):** right-click the launcher, choose "Open," click
-  "Open" again in the dialog. Only needed once. The build script ad-hoc
-  signs the binary (`codesign --force --deep --sign -`), which prevents a
-  separate "app is damaged" failure some unsigned arm64 binaries hit, but
-  it does not satisfy Gatekeeper's identified-developer check - that
-  requires a paid Apple Developer ID, which is a separate decision from
-  the build process itself.
-- **Windows (SmartScreen):** click "More info," then "Run anyway." Only
-  needed once.
+### Terminal verification
 
-Both `READ ME FIRST.txt` files explain this to whoever you send the build
-to, so you shouldn't need to walk them through it live.
+macOS or Linux:
 
-## What's actually bundled
+```sh
+./PromptSmith-cli --version
+```
+
+Windows:
+
+```powershell
+.\PromptSmith-cli.exe --version
+```
+
+## Distribute the ZIP
+
+The generated ZIP is the product you share. Do not send only the executable.
+
+Suitable distribution methods include:
+
+- GitHub Releases
+- shared cloud storage
+- internal file shares
+- USB media
+- direct transfer to friends or teammates
+
+The recipient should:
+
+1. Download the ZIP for their operating system and architecture.
+2. Extract the complete ZIP.
+3. Keep all files and folders together.
+4. Start PromptSmith using the included launcher.
+
+### macOS Gatekeeper
+
+Unsigned or ad-hoc-signed builds will usually trigger Gatekeeper.
+
+The recipient should right-click `Start PromptSmith-cli.command`, choose **Open**, and confirm **Open**. This is normally needed only once.
+
+The build script uses ad-hoc signing where available to avoid some damaged-binary failures, but ad-hoc signing is not Apple Developer ID signing and does not provide notarization.
+
+For public releases intended for strangers, the proper long-term path is:
+
+1. sign with an Apple Developer ID certificate
+2. notarize with Apple
+3. staple the notarization ticket
+
+Do not tell recipients to disable Gatekeeper globally.
+
+### Windows SmartScreen
+
+Unsigned builds may trigger SmartScreen. The recipient can choose **More info** and then **Run anyway** after verifying the ZIP came from the expected source.
+
+For broader public distribution, sign the executable and installer artifacts with a trusted Windows code-signing certificate.
+
+Do not tell recipients to disable SmartScreen globally.
+
+### Linux permissions
+
+Some ZIP tools do not preserve executable bits. When needed:
+
+```sh
+chmod +x PromptSmith-cli start-promptsmith-cli.sh
+```
+
+Then launch:
+
+```sh
+./start-promptsmith-cli.sh
+```
+
+## Integrity for release artifacts
+
+For public or semi-public sharing, publish a SHA-256 checksum beside every ZIP.
+
+macOS or Linux:
+
+```sh
+shasum -a 256 dist/PromptSmith-cli-<version>-<platform>-<arch>.zip
+```
+
+Linux alternative:
+
+```sh
+sha256sum dist/PromptSmith-cli-<version>-linux-<arch>.zip
+```
+
+Windows PowerShell:
+
+```powershell
+Get-FileHash .\dist\PromptSmith-cli-<version>-windows-x64.zip -Algorithm SHA256
+```
+
+Recipients can compare the checksum before extracting. A checksum proves the file matches what you published; it does not replace code signing.
+
+## What is included
 
 | Included | Not included |
 |---|---|
-| Full Python runtime | A code-signing certificate (see above) |
-| All pip dependencies, incl. llama-cpp-python (when installed) | Auto-downloading models - you download once, before building |
-| Package metadata (powers the version display) | |
-| `profiles/`, `templates/`, `config.yaml` | |
-| Whatever `.gguf` files are in `models/` at build time | |
+| Python runtime | Apple or Windows commercial signing certificate |
+| PromptSmith dependencies | Automatic trust from Gatekeeper or SmartScreen |
+| `llama-cpp-python` and native libraries | Cross-platform compatibility |
+| Package metadata | Models not present in `models/` at build time |
+| Profiles, templates, and configuration | Automatic future upgrades |
+| Any bundled GGUF models | Encrypted local history |
+| Launchers and first-run instructions | |
 
-## Editing profiles/templates in a built distribution
+## Updating a portable installation
 
-Open the `profiles/` or `templates/` folder sitting next to the
-executable, edit or add `.yaml` files with any text editor, restart the
-app. Discovery is a plain directory scan at startup - no manifest to
-update, no rebuild required.
+Portable builds do not auto-update.
 
-For anything you want to survive a future update, use the `user_data/`
-folder next to the executable instead (created on first save from the
-in-app profile editor): user-space profiles/templates override same-named
-built-ins and are never touched by a rebuild. The old caveat about
-hand-added profiles being lost on redistribution only applies to files
-added directly into `profiles/`/`templates/` - `user_data/` is the
-supported answer to it.
+Recommended update process:
 
-## Wheel installs
+1. Back up the recipient's `user_data/` directory.
+2. Extract the new release into a new folder.
+3. Copy the old `user_data/` directory into the new folder.
+4. Copy any custom GGUF files that are not included in the new release.
+5. Test the new version before deleting the previous folder.
 
-`pip install promptsmith-cli` (from a wheel or PyPI) is fully supported:
-built-in profiles and templates ship inside the package itself
-(`src/promptsmith/data/`), and per-user files (config, exports, custom
-profiles) live under `~/.promptsmith/`. The old known limitation - where
-`package-data` pointed at the wrong location and a wheel install couldn't
-find its built-ins - is fixed and covered by tests.
+Do not overwrite `_internal/` piecemeal. Replace the complete application folder while preserving user-owned data.
+
+## Editing profiles and templates
+
+The top-level `profiles/` and `templates/` folders are readable and editable. Changes there affect that extracted distribution but may be replaced by a future build.
+
+Persistent user additions belong under:
+
+```text
+user_data/profiles/
+user_data/templates/
+```
+
+User-space entries override same-named built-ins and survive replacement of the application folder when `user_data/` is carried forward.
+
+## Wheel and source installs
+
+Portable ZIPs are one distribution method, not the only one.
+
+- Source checkout: `python -m pip install -e .`
+- Built wheel: `python -m pip install dist/promptsmith_cli-<version>-py3-none-any.whl`
+- Future PyPI release: `python -m pip install promptsmith-cli`
+- Portable native folder: extract the platform ZIP and use the launcher
+
+Wheel and source installations store user data under `~/.promptsmith/`. Portable builds store it under `user_data/` beside the executable.
