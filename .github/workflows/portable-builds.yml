@@ -68,13 +68,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[build]"
 
-      - name: Build portable folder on macOS or Linux
+      - name: Build model-free portable folder on macOS or Linux
         if: runner.os != 'Windows'
-        run: ./build_cli.sh
+        run: printf 'y\n' | ./build_cli.sh
 
-      - name: Build portable folder on Windows
+      - name: Build model-free portable folder on Windows
         if: runner.os == 'Windows'
-        run: cmd /c build_windows.bat
+        run: cmd /c "echo y| build_windows.bat"
 
       - name: Verify portable ZIP and generate checksum
         run: python tools/prepare_portable_artifact.py
