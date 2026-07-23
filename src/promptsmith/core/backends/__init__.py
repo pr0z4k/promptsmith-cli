@@ -1,36 +1,23 @@
-"""
-Backend module for PromptSmith-cli.
-
-This module provides the abstract base class for all refinement backends.
-"""
+"""Shared contracts for prompt-refinement backends."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Optional
+
+from ..profile import RefinementProfile
 
 
 class ModelBackend(ABC):
-    """
-    Abstract base class for prompt-refinement backends.
-    
-    All backends must implement the refine() method which takes a prompt
-    and a profile, and returns a refined prompt or None if refinement fails.
-    
-    Backends can be:
-    - Rule-based: Deterministic refinement using predefined rules
-    - LLM-based: Uses a language model to refine prompts
-    - Custom: Any other refinement strategy
-    """
+    """Stable interface implemented by every refinement backend."""
+
+    last_error: Optional[str] = None
 
     @abstractmethod
-    def refine(self, prompt: str, profile: Dict[str, Any]) -> Optional[str]:
+    def refine(self, prompt: str, profile: RefinementProfile) -> Optional[str]:
+        """Return a refined prompt, or ``None`` when refinement is unavailable."""
+
+    def unload(self) -> None:
+        """Release backend resources.
+
+        Stateless backends require no cleanup, so the default implementation is
+        intentionally a no-op. Resource-owning backends may override it.
         """
-        Refine a prompt using the backend's strategy.
-        
-        Args:
-            prompt: The original prompt to refine
-            profile: The profile dictionary containing refinement context
-            
-        Returns:
-            The refined prompt string, or None if refinement is not possible
-        """
-        pass
