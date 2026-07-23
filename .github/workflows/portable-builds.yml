@@ -1,0 +1,124 @@
+name: Portable builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "build_cli.sh"
+      - "build_windows.bat"
+      - "pyproject.toml"
+      - "src/**"
+      - "tools/prepare_portable_artifact.py"
+      - ".github/workflows/portable-builds.yml"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+            shell: bash
+            artifact: promptsmith-linux-x64
+          - name: Windows x64
+            os: windows-2025
+            shell: pwsh
+            artifact: promptsmith-windows-x64
+          - name: macOS Apple Silicon
+            os: macos-15
+            shell: bash
+            artifact: promptsmith-macos-arm64
+          - name: macOS Intel
+            os: macos-15-intel
+            shell: bash
+            artifact: promptsmith-macos-x64
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Windows llama runtime
+        if: runner.os == 'Windows'
+        run: >-
+          python -m pip install llama-cpp-python
+          --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+      - name: Install project and build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build]"
+
+      - name: Build model-free portable folder on macOS or Linux
+        if: runner.os != 'Windows'
+        run: printf 'y\n' | ./build_cli.sh
+
+      - name: Build model-free portable folder on Windows
+        if: runner.os == 'Windows'
+        run: cmd /c "echo y| build_windows.bat"
+
+      - name: Verify portable ZIP and generate checksum
+        run: python tools/prepare_portable_artifact.py
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/PromptSmith-cli-*.zip
+            dist/PromptSmith-cli-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all portable artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Combine checksums
+        shell: bash
+        run: |
+          cat release-assets/*.zip.sha256 | sort > release-assets/SHA256SUMS.txt
+          cat release-assets/SHA256SUMS.txt
+
+      - name: Create release and upload portable ZIPs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          release-assets/*.zip
+          release-assets/SHA256SUMS.txt
+          --repo "${GITHUB_REPOSITORY}"
+          --verify-tag
+          --generate-notes
+          --title "PromptSmith-cli ${GITHUB_REF_NAME}"
