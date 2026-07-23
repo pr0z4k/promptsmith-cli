@@ -1,23 +1,96 @@
 # PromptSmith-cli
 
-> A local-first prompt quality gateway that analyzes and refines prompts before they consume remote AI tokens.
+> A local-first prompt preflight tool for your terminal.
 
-PromptSmith-cli combines deterministic prompt analysis with local small language model (SLM) refinement. It scores prompt readiness, surfaces ambiguity and missing context, applies reusable profiles and templates, and keeps a local history of prompt evolution.
+PromptSmith does not generate code. It does not replace your favorite AI, maintain a giant prompt library, or invent another cloud account for you to forget the password to.
 
-- Source: https://github.com/pr0z4k/promptsmith-cli
-- Issues: https://github.com/pr0z4k/promptsmith-cli/issues
-- Releases: [CHANGELOG.md](CHANGELOG.md)
-- License: [MIT](LICENSE)
+It helps you send **better prompts before you spend tokens**.
 
-## Why this exists
+Every prompt is analyzed locally, scored from 0 to 100, checked for ambiguity and missing context, and optionally refined with deterministic rules, a local Small Language Model (SLM), or both.
 
-Weak prompts waste time, tokens, and attention. PromptSmith performs a local preflight before a prompt reaches another AI system:
+No cloud inference dependency. No telemetry. No subscription. No prompt-shaped cargo cult.
+
+Just a better prompt before the expensive machine gets involved.
+
+- **Source:** https://github.com/pr0z4k/promptsmith-cli
+- **Issues:** https://github.com/pr0z4k/promptsmith-cli/issues
+- **Releases:** [CHANGELOG.md](CHANGELOG.md)
+- **License:** [MIT](LICENSE)
+
+## Why PromptSmith exists
+
+Every AI conversation starts with a prompt.
+
+Most prompts are written in a hurry. They are vague, underspecified, missing context, or quietly depend on assumptions that exist only inside the author's head. The model then produces a mediocre answer and everyone begins the traditional ritual of regenerating it five times.
+
+PromptSmith interrupts that cycle.
+
+Instead of fixing a bad response after the fact, it performs a local preflight before the prompt reaches ChatGPT, Claude, Gemini, Copilot, a local model, or whatever impressive new autocomplete has appeared this week.
 
 ```text
-Prompt -> Analyze -> Challenge -> Refine -> Verify -> Export
+Prompt
+  |
+  v
+Deterministic analysis
+  |
+  +-- readiness score
+  +-- missing context
+  +-- ambiguity and smells
+  +-- recommended profile
+  +-- clarifying challenges
+  |
+  v
+Optional refinement
+  |
+  +-- rules
+  +-- local SLM
+  +-- hybrid
+  |
+  v
+A better prompt
 ```
 
-Deterministic analysis remains available without loading a model. LLM and Hybrid profiles use a local GGUF model through `llama-cpp-python`, so prompt content stays on the machine.
+AI models are becoming cheaper. Human attention is not.
+
+Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes negotiating with a poor response.
+
+## PromptSmith is not
+
+PromptSmith is deliberately narrow.
+
+It is not:
+
+- a cloud prompt manager
+- a prompt marketplace
+- an AI chatbot
+- an OpenAI wrapper
+- an agent framework
+- an MCP client
+- a replacement for the model that will actually do the work
+
+PromptSmith is a **prompt quality gateway**. It prepares a prompt, then gets out of the way. Software is allowed to have boundaries. We checked.
+
+## Design principles
+
+### Local first
+
+Prompt content remains on your machine unless you explicitly copy or export it. Deterministic analysis works offline. LLM and Hybrid refinement use local GGUF models through `llama-cpp-python`.
+
+### Deterministic before generative
+
+The analyzer does not need a model to tell you that a prompt lacks context, constraints, an expected format, or a clear outcome. Rules handle the predictable work first. A local model is used only where generation can add value.
+
+### Terminal native
+
+PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume.
+
+### One job, done properly
+
+PromptSmith improves prompts. Features that do not serve that job should have an excellent argument before they are allowed through the door.
+
+### Human time matters more than token theater
+
+Saving tokens is useful. Saving attention, retries, and frustration is better.
 
 ## Features
 
@@ -29,17 +102,11 @@ Deterministic analysis remains available without loading a model. LLM and Hybrid
 - Secure preset and custom GGUF downloads
 - Runtime model switching without restarting the application
 - Local SQLite prompt history with JSON and CSV export
-- Terminal UI that remains usable at approximately 80 columns
+- Responsive terminal interface usable at approximately 80 columns
 - Native portable builds for macOS, Linux, and Windows
+- No cloud API keys or remote inference service required
 
-### Non-goals
-
-- PromptSmith is not a cloud prompt manager or model-hosting service.
-- It does not send prompts to remote inference APIs.
-- It does not replace the target coding assistant, chatbot, or model.
-- It does not guarantee that a small local model will improve every prompt.
-
-## Prerequisites
+## Requirements
 
 For a source installation:
 
@@ -47,13 +114,18 @@ For a source installation:
 - macOS, Linux, or Windows
 - A terminal with Unicode support
 - Enough memory for the selected GGUF model
-  - TinyLlama: suitable for lower-resource systems
-  - Phi-4-mini Q4_K_M: approximately 2.5 GB on disk; 16 GB system RAM recommended
-- Network access only when downloading models or dependencies
+- Network access only for dependency or model downloads
 
-Recipients of a portable ZIP do not need Python, pip, Git, or a compiler. They need only a compatible operating system and enough memory for any bundled model.
+Model guidance:
 
-## Quick start
+- **TinyLlama:** useful on lower-resource systems
+- **Phi-4-mini Q4_K_M:** approximately 2.5 GB on disk; 16 GB system RAM recommended
+
+Portable-build users do not need Python, pip, Git, or a compiler. They need only a compatible operating system and enough memory for any bundled model.
+
+## Installation
+
+### From source
 
 Run from the repository root:
 
@@ -65,7 +137,7 @@ python -m pip install -e .
 promptsmith
 ```
 
-On Windows PowerShell, activate the environment with:
+Windows PowerShell activation:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -73,23 +145,132 @@ On Windows PowerShell, activate the environment with:
 
 A standard installation includes the local SLM runtime. The historical `[llm]` extra remains accepted for compatibility but is no longer required.
 
-### Verify
+Verify the installation:
 
 ```sh
 promptsmith --version
 ```
 
-Expected result:
+Expected shape:
 
 ```text
-PromptSmith-cli <installed version> (...)
+PromptSmith-cli 1.0.0 (1)
 ```
 
-Then launch `promptsmith`, enter a prompt, and press `Ctrl+Enter` to analyze it.
+## Quick start
 
-## Build native portable packages
+1. Launch `promptsmith`.
+2. Enter a prompt in the editor.
+3. Press `Ctrl+Enter` to analyze it.
+4. Review readiness, missing elements, smells, recommendations, and clarifying challenges.
+5. Select a profile and, optionally, a template.
+6. Press `Ctrl+R` to refine.
+7. Copy or export the result to the AI system that will actually perform the task.
 
-PromptSmith can be packaged as a self-contained folder and ZIP for people who do not have Python installed. Builds are native to the operating system that creates them because PyInstaller does not cross-compile.
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+Enter` | Analyze the current prompt |
+| `Ctrl+R` | Refine the current prompt |
+| `Ctrl+Shift+A` | Focus the prompt editor and select all prompt text |
+| `Ctrl+Y` | Copy refined output |
+| `Ctrl+S` | Save configuration |
+| `Ctrl+Q` | Quit, or return from Settings |
+| `Up` / `Down` | Scroll output |
+
+On macOS, `Cmd+A` is usually consumed by the terminal and selects terminal content. Use `Ctrl+Shift+A` for PromptSmith's in-app **Select Prompt** action.
+
+## How refinement works
+
+Analysis always runs first and remains deterministic. Refinement behavior is selected per profile.
+
+| Backend | Behavior | Model required |
+|---|---|---:|
+| `rule` | Builds a structured prompt while preserving profile constraints | No |
+| `llm` | Rewrites the prompt through the selected local GGUF model | Yes |
+| `hybrid` | Builds a deterministic scaffold, then asks the local model to polish it | Yes |
+
+The Hybrid backend falls back to deterministic output if the model is unavailable. A missing model should reduce capability, not turn the application into a decorative traceback generator.
+
+## Profiles and templates
+
+Profiles describe the role, domain, tone, output format, constraints, vendor assumptions, and refinement backend for a task.
+
+Templates provide reusable prompt structures. They are optional and receive the prompt editor content as their logical input.
+
+Built-in content is packaged under:
+
+```text
+src/promptsmith/data/profiles/
+src/promptsmith/data/templates/
+```
+
+Persistent user overrides normally live under:
+
+```text
+~/.promptsmith/profiles/
+~/.promptsmith/templates/
+```
+
+Portable builds keep user data beside the executable under `user_data/`.
+
+A user file with the same name as a built-in entry overrides the packaged copy without modifying it. Profile changes made through the editor are reloaded immediately.
+
+## Local models
+
+Open **Settings -> Download LLM Models** to download the built-in presets:
+
+- Microsoft Phi-4-mini-instruct Q4_K_M
+- TinyLlama 1.1B Chat Q4_K_M
+
+Preset downloads use HTTPS streaming, redirect validation, retries, GGUF header validation, known SHA-256 verification where supplied, partial-file cleanup, `fsync`, and atomic promotion into the model directory.
+
+Use **Settings -> Switch Model** to select a downloaded model. Cached LLM and Hybrid backends detect model-path changes and load the new model without requiring an application restart.
+
+Custom downloads must use a `.gguf` filename. HTTPS is strongly recommended. PromptSmith validates the GGUF header, but a custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
+
+## Prompt history
+
+Every successful refinement is recorded in a local SQLite database with:
+
+- original prompt
+- refined output
+- timestamp
+- profile and template
+- backend and model
+- analysis metadata
+
+The History screen supports preview, copying, deletion, complete clearing, and JSON or CSV export.
+
+History is stored unencrypted and contains full prompt and output text. It has no automatic retention limit. Clear it after sensitive work on shared systems, because privacy policies are less useful after someone has already opened the database.
+
+Typical locations:
+
+```text
+~/.promptsmith/history.db
+user_data/history.db   # portable build
+```
+
+## Configuration
+
+PromptSmith uses `config.yaml` plus profile and template YAML files.
+
+| Setting | Required | Default | Purpose |
+|---|---:|---|---|
+| `default_profile` | No | `general` | Profile selected at startup |
+| `default_template` | No | none | Template selected at startup |
+| `llm.model_path` | No | first valid `.gguf` in `models/` | Explicit local model path |
+
+Configuration precedence:
+
+```text
+built-in defaults -> config.yaml -> user overrides -> runtime Settings choices
+```
+
+## Native portable builds
+
+PromptSmith can be packaged as a self-contained folder and ZIP for users without Python installed. PyInstaller builds are native to the operating system that creates them; it does not cross-compile merely because humans would find that convenient.
 
 | Target | Build on | Command | Output |
 |---|---|---|---|
@@ -97,7 +278,7 @@ PromptSmith can be packaged as a self-contained folder and ZIP for people who do
 | Linux | Linux | `./build_cli.sh` | `dist/PromptSmith-cli-<version>-linux-<arch>.zip` |
 | Windows | Windows | `build_windows.bat` | `dist\PromptSmith-cli-<version>-windows-x64.zip` |
 
-Prepare the build environment first:
+Prepare the build environment:
 
 ```sh
 python -m venv .venv
@@ -106,7 +287,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[build]"
 ```
 
-Windows PowerShell equivalent:
+Windows PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -115,7 +296,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[build]"
 ```
 
-Download any GGUF models you want to include before building. The build scripts copy the contents of `models/` into the portable package. Omitting models produces a smaller package where deterministic Rules work immediately and the recipient can download a model later from Settings.
+Download any GGUF models you want to bundle before building. Omitting models creates a smaller artifact where deterministic Rules work immediately and models can be downloaded later from Settings.
 
 Each ZIP contains:
 
@@ -131,177 +312,92 @@ PromptSmith-cli-<version>-<platform>/
 └── _internal/
 ```
 
-### Share the ZIP
+Unsigned community builds may trigger Gatekeeper or SmartScreen. That is expected until releases are signed and, on macOS, notarized. Do not disable operating-system security globally to make a hobby project feel more authoritative.
 
-The generated ZIP is the distributable artifact. You can attach it to a GitHub release, copy it to shared storage, or send it directly to friends or teammates.
-
-The recipient:
-
-1. Downloads and extracts the complete ZIP.
-2. Keeps the extracted folder together. The executable depends on `_internal/` and the adjacent data folders.
-3. Starts PromptSmith with the included launcher.
-4. Handles the operating-system security prompt on first launch:
-   - macOS: right-click the launcher, choose **Open**, then confirm **Open**.
-   - Windows: choose **More info**, then **Run anyway** if SmartScreen appears.
-   - Linux: ensure the launcher is executable with `chmod +x start-promptsmith-cli.sh` when archive permissions were not preserved.
-
-Unsigned community builds may trigger Gatekeeper or SmartScreen. That is expected until releases are signed and, on macOS, notarized. Do not advise recipients to disable operating-system security globally.
-
-Portable ZIPs are platform- and architecture-specific. A macOS Apple Silicon build will not run on Windows, Linux, or an Intel-only Mac. Build and label each artifact separately.
-
-See [BUILD.md](BUILD.md) for native dependency checks, model bundling, signing behavior, artifact verification, and release distribution details.
-
-## Configuration
-
-PromptSmith uses `config.yaml` plus profile and template YAML files.
-
-| Setting | Required | Default | Secret | Purpose |
-|---|---:|---|---:|---|
-| `default_profile` | No | `general` | No | Profile selected at startup |
-| `default_template` | No | none | No | Template selected at startup |
-| `llm.model_path` | No | first valid `.gguf` in `models/` | No | Explicit local model path |
-
-Configuration precedence is:
-
-```text
-built-in defaults -> config.yaml -> user profile/template overrides -> runtime Settings choices
-```
-
-User data normally lives under `~/.promptsmith/`. Portable builds use a `user_data/` directory beside the executable.
-
-## Usage
-
-1. Enter a prompt in the editor.
-2. Press `Ctrl+Enter` to analyze it.
-3. Review readiness, missing elements, smells, recommendations, and clarifying challenges.
-4. Select a profile and optional template.
-5. Press `Ctrl+R` to refine.
-6. Copy or export the result.
-
-### Keyboard shortcuts
-
-| Key | Action |
-|---|---|
-| `Ctrl+Enter` | Analyze |
-| `Ctrl+R` | Refine |
-| `Ctrl+Shift+A` | Focus the prompt editor and select all prompt text |
-| `Ctrl+Y` | Copy refined output |
-| `Ctrl+S` | Save configuration |
-| `Ctrl+Q` | Quit, or return from Settings |
-| `Up` / `Down` | Scroll output |
-
-On macOS, `Cmd+A` is usually consumed by the terminal application and selects terminal content. Use `Ctrl+Shift+A` for PromptSmith's in-app Select Prompt action.
-
-## Backends
-
-Backends are selected per profile through the `backend` field.
-
-| Backend | Behavior |
-|---|---|
-| `rule` | Deterministic refinement that preserves profile constraints and is always available |
-| `llm` | Direct rewrite through the selected local GGUF model |
-| `hybrid` | Rule refinement followed by local-model polishing, with deterministic fallback |
-
-Analysis and challenge generation are deterministic and run before backend selection.
-
-## Local models
-
-Open **Settings -> Download LLM Models** to download the built-in presets:
-
-- Microsoft Phi-4-mini-instruct Q4_K_M
-- TinyLlama 1.1B Chat Q4_K_M
-
-Preset downloads use HTTPS streaming, redirect validation, retries, GGUF validation, known SHA-256 verification where supplied, partial-file cleanup, `fsync`, and atomic promotion into the model directory.
-
-Use **Settings -> Switch Model** to select a downloaded model. Cached LLM and Hybrid backends detect model-path changes, unload the old model, and load the new model during the same application session.
-
-Custom downloads must use HTTPS and a `.gguf` filename. PromptSmith validates the GGUF header, but a custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
-
-## Profiles and templates
-
-Built-ins are packaged under `src/promptsmith/data/`.
-
-Persistent user overrides live under:
-
-```text
-~/.promptsmith/profiles/
-~/.promptsmith/templates/
-```
-
-A user file with the same name as a built-in entry overrides it without modifying the shipped copy. Profile changes made through the editor are reloaded immediately, including backend changes.
-
-Templates should use one logical prompt input. Multiple placeholders are filled from the same editor content.
-
-## Prompt history
-
-Every successful refinement is recorded in a local SQLite database. History stores timestamps, selected profile and template, backend and model, original and refined prompts, and analysis metadata.
-
-The History screen supports preview, deletion, complete clearing, and JSON or CSV export.
-
-History is stored unencrypted. It contains full prompt and output text and has no automatic retention limit. Clear it after sensitive work on shared systems.
-
-Typical locations:
-
-```text
-~/.promptsmith/history.db
-user_data/history.db   # portable build
-```
+See [BUILD.md](BUILD.md) for dependency checks, model bundling, signing behavior, artifact verification, and distribution details.
 
 ## Architecture
 
-The application separates deterministic analysis, profile/template storage, backend orchestration, local model execution, secure model acquisition, and SQLite history. Backend instances are reused for performance, while runtime model-path refresh prevents stale cached models.
+PromptSmith separates:
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for boundaries, data flow, invariants, failure behavior, and the source map.
+- deterministic analysis
+- profile and template storage
+- backend orchestration
+- local model execution
+- secure model acquisition
+- SQLite history
+- Textual presentation
 
-## Operations and security
+Backend instances are reused for performance. Runtime model-path refresh prevents cached backends from continuing to use stale models.
 
-- Prompt content remains local unless the user manually exports or copies it elsewhere.
-- No account, token, or cloud inference service is required.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for data flow, boundaries, invariants, failure behavior, and the source map.
+
+## Security and privacy
+
+- Prompt content stays local unless manually copied or exported.
+- No account, API key, or cloud inference service is required.
 - Model downloads are the primary outbound network activity.
-- Logs are written to the PromptSmith user-data directory and must not include prompt bodies.
-- Models and history should be backed up only when their local contents are acceptable to retain.
+- Logs are written to the PromptSmith user-data directory and must not contain prompt bodies.
+- History and model files should be backed up only when their contents are acceptable to retain.
 
-See [SECURITY.md](SECURITY.md).
-
-## Troubleshooting
-
-### A preset model fails to download
-
-Check the status-bar error, network access, free disk space, and whether a stale `.part` file remains. Restart the download after upgrading to current `main`.
-
-### A selected model is not used
-
-Use **Settings -> Model Status** to inspect the last backend and model. Re-select the model and run another refinement; switching should not require an application restart.
-
-### A portable build does not start
-
-Confirm that the whole extracted folder is intact, not only the executable. Review `READ ME FIRST.txt`, then run the executable from a terminal to see the actual error. On Windows, install the Microsoft Visual C++ Redistributable if the bundled llama.cpp libraries cannot load.
-
-See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for additional cases.
+See [SECURITY.md](SECURITY.md) for the threat model, security boundaries, and reporting process.
 
 ## Development
 
+Install the development and build toolchains:
+
 ```sh
 python -m pip install -e ".[dev,build]"
+```
+
+Run the complete release validator:
+
+```sh
 python tools/validate_release.py --keep-going
 ```
 
-The release validator runs formatting, linting, type checking, tests, package build, Twine checks, and a clean wheel-install smoke test.
+The validator runs formatting, import sorting, linting, type checking, tests, package build, Twine checks, and a clean wheel-install smoke test.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Releases
+## Roadmap
 
-See [CHANGELOG.md](CHANGELOG.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+### 1.1
 
-## Article
+- split the large TUI module into clearer screen and service boundaries
+- expand deterministic analysis rules
+- improve history navigation and filtering
+- add more focused profiles and templates
+- strengthen model integrity verification
+- continue accessibility and narrow-terminal testing
 
-PromptSmith-cli is a candidate for a future prozak.org article after the v1 release is frozen and reproducible from a clean environment.
+### Later
+
+- reproducible lockfiles and builds
+- SBOM generation
+- signed release artifacts
+- macOS notarization and Windows signing
+
+The roadmap is intentionally modest. PromptSmith is not applying for permission to become an operating system.
+
+## Release information
+
+- [Changelog](CHANGELOG.md)
+- [Release checklist](RELEASE_CHECKLIST.md)
+- [v1.0 release notes](RELEASE_NOTES.md)
+
+## Contributing
+
+Bug reports, focused improvements, tests, and profile or template contributions are welcome.
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. New features should preserve the local-first model and support PromptSmith's primary job: improving a prompt before it reaches another AI system.
 
 ## License
 
-[MIT](LICENSE)
+PromptSmith-cli is released under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-PromptSmith builds on Textual, llama.cpp through `llama-cpp-python`, PyInstaller, and the GGUF model ecosystem published through Hugging Face.
+PromptSmith builds on Textual, llama.cpp through `llama-cpp-python`, PyInstaller, SQLite, and the GGUF model ecosystem distributed through Hugging Face.
+
+The dependencies do the difficult low-level work. PromptSmith merely arranges them into a useful machine and then pretends the terminal was always supposed to glow green.
