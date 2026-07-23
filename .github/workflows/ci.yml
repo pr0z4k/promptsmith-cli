@@ -9,14 +9,6 @@ permissions:
   contents: read
 
 jobs:
-  diagnostic:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify runner execution
-        run: |
-          echo "runner-started"
-          uname -a
-
   test:
     runs-on: ${{ matrix.os }}
     strategy:
