@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "promptsmith-cli"
 version = "0.6.0b2"
-description = "PromptSmith-cli: a local-first prompt quality gateway. 100% open source, local only, zero commercial dependencies."
+description = "PromptSmith-cli: a local-first prompt quality gateway with deterministic analysis and local SLM refinement."
 authors = [{name = "Prozak"}]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.15"
-keywords = ["prompt-engineering", "tui", "llm", "local-first", "textual"]
+keywords = ["prompt-engineering", "tui", "llm", "slm", "local-first", "textual"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -32,6 +32,8 @@ dependencies = [
     "psutil==7.2.2",
     "requests==2.34.2",
     "tqdm==4.69.0",
+    "llama-cpp-python==0.3.34",
+    "huggingface-hub==0.34.3",
 ]
 
 [project.urls]
@@ -41,7 +43,10 @@ Changelog = "https://github.com/pr0z4k/promptsmith-cli/blob/main/CHANGELOG.md"
 Source = "https://github.com/pr0z4k/promptsmith-cli"
 
 [project.optional-dependencies]
-llm = ["llama-cpp-python==0.3.34"]
+# Kept as a compatibility alias for existing install instructions. Local SLM
+# support is now part of the standard installation rather than an optional
+# feature that leaves hybrid/LLM profiles unusable.
+llm = []
 dev = [
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
@@ -58,8 +63,8 @@ build = [
 ]
 
 [project.scripts]
-promptsmith = "promptsmith.cli.app:main"
-promptsmith-cli = "promptsmith.cli.app:main"
+promptsmith = "promptsmith.cli.launcher:main"
+promptsmith-cli = "promptsmith.cli.launcher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
