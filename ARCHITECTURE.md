@@ -1,278 +1,229 @@
-# PromptSmith-cli Architecture
+# Architecture: PromptSmith-cli
 
-## Vision
+**Last reviewed:** 2026-07-23  
+**Applies to version:** v1 release candidate on `main`
 
-PromptSmith-cli implements the **Intent Compiler** pattern:
+## Purpose and scope
 
-```
-Human Thought -> Analyzer -> Challenge -> Readiness -> Recommendations -> Preparation -> Output
-```
+PromptSmith-cli is a local-first terminal application that evaluates prompt quality and optionally refines prompts through deterministic rules, a local small language model (SLM), or a Hybrid chain.
 
-Transforming ambiguous human intent into precise, structured AI instructions before any LLM inference occurs.
+The system owns prompt analysis, profile and template application, local model selection and execution, secure model acquisition, history persistence, export, and the Textual terminal interface. It does not host models as a network service, call cloud inference APIs, or manage prompts across multiple users.
 
-## Core Components
+## System context
 
-### 1. Configuration Management
-- **ConfigManager**: Centralized configuration storage with dot-notation access
-- **YAMLConfigStore**: Abstract base class for YAML-backed configuration,
-  loading from an optional `user_dir` in addition to the base
-  `config_dir` - entries in `user_dir` override same-named entries from
-  `config_dir`, and new writes (`add_config`) always target `user_dir`
-  when set, never the built-in directory. Used by both `ProfileManager`
-  and `TemplateManager` to give user-space profiles/templates
-  (`~/.promptsmith/profiles/`, `~/.promptsmith/templates/`) precedence
-  over the bundled defaults without ever mutating them in place.
-
-### 2. Profile System
-- **ProfileManager**: Manages persona profiles with validation
-- **ProfileSchema**: Hand-rolled `isinstance()`-based validation - checks
-  required fields, type-checks optional ones, and fills in sensible
-  defaults (`domain`, `tone`, `format`, `constraints`, `version`,
-  `backend`). Wired in as the actual live validation via
-  `YAMLConfigStore`'s `config_schema` parameter; `pydantic` was
-  previously a declared but entirely unused dependency (imported
-  defensively in a try/except, never referenced) and has been removed
-  rather than migrated to, since the hand-rolled validation here has
-  already been exercised through this project's full bug-finding history.
-- **Built-in Profiles**: 35 domain profiles shipped inside the package
-  (`src/promptsmith/data/profiles/`), spanning software engineering
-  (AEM, React, NextJS, cloud, microservices), architecture, business,
-  and content roles, plus `vibe-coding` for general AI-assisted work
-
-### 3. Template System
-- **TemplateManager**: Manages prompt templates with validation
-- **TemplateSchema**: Hand-rolled `isinstance()`-based validation (same
-  note as above) - also now the actual live validation path, not dead
-  code sitting unused alongside a separate, simpler duplicate check.
-- **Built-in Templates**: 22 templates shipped inside the package
-  (`src/promptsmith/data/templates/`) - component/app skeletons, cloud
-  infrastructure, business documents, and process artifacts
-
-### 4. Intent Compiler Pipeline
-- **IntentCompiler**: A single `compile()` entry point that runs
-  analysis -> readiness -> recommendations -> profile selection ->
-  preparation -> re-analysis as one coherent pipeline, matching the vision
-  above. **Currently not called by the app** - `cli/app.py`'s
-  `action_analyze()`/`action_refine()` call `PromptAnalyzer`/`PromptRefiner`
-  directly and duplicate this orchestration by hand, missing out on
-  re-analysis-after-refinement and the unified compilation score. This
-  remains a real architectural gap, flagged again by an external review -
-  but a maintainability concern, not a correctness one: the direct-call
-  path is what's actually been tested against every real bug found in
-  this project. Deliberately left as-is rather than wired in or removed;
-  worth a real decision eventually, just not an urgent one.
-- **PromptAnalyzer**: Deterministic analysis of prompts for quality and readiness
-  - Type detection (coding, AEM, NextJS, React, architecture, etc.) -
-    word-boundary matched to avoid short patterns matching inside
-    unrelated words
-  - Smell detection with explanations and severity
-  - Missing elements detection
-  - **Challenge detection**: rule-based clarifying questions (not
-    LLM-generated) surfacing genuine gaps - vague scope, missing success
-    criteria, missing audience, vague quantities, unstated integration
-    constraints. Informational only, applies identically regardless of
-    profile/template/backend since it runs before a backend is selected.
-  - Actionable recommendations
-  - Readiness assessment
-- **CompilationStep**: Represents individual pipeline stages
-- **IntentCompilationResult**: Complete result with analysis, refined prompt, and metadata
-
-### 5. Prompt Refinement
-- **PromptRefiner**: Core component that orchestrates refinement
-- **ModelBackend**: Abstract base class for refinement backends
-- **RuleBasedBackend**: Deterministic rule-based refinement
-- **LLMBasedBackend**: LLM-powered refinement via `create_chat_completion()`
-  with proper role-structured messages and a validated `chat_format`
-  (checked against the installed llama-cpp-python's actual registry before
-  use, since a hardcoded guess isn't reliably registered across versions)
-- **HybridBackend**: Runs `RuleBasedBackend` first for guaranteed
-  completeness, then asks the LLM to polish that text into clearer prose;
-  falls back to the pure rule-based result if the LLM is unavailable or
-  the polish looks truncated/degenerate
-
-### 6. Plugin System
-- **BackendRegistry**: Registry for backend plugins
-- **PluginManager**: Manages plugin discovery and loading
-
-### 7. Utility Modules
-- **SystemUtils**: System-level utilities (RAM, paths)
-- **PathUtils**: Path resolution utilities
-- **Filesystem**: Filesystem operations
-
-## Data Flow
-
-### Original Flow (Preserved)
-1. User provides raw prompt
-2. System loads appropriate profile and template
-3. PromptRefiner orchestrates refinement:
-   - Template expansion
-   - Backend processing (LLM or rule-based)
-   - Rule-based fallback
-4. Refined prompt returned to user
-
-### New Intent Compiler Flow
-1. **Analysis**: User provides raw prompt
-   - PromptAnalyzer detects type (AEM, NextJS, React, coding, etc.)
-   - Identifies missing elements (Context, Audience, Output Format, Constraints, Purpose)
-   - Detects smells (ambiguous terms like "modern", "best", "optimize")
-   - Generates actionable recommendations
-   - Calculates readiness score (0-100)
-   - Recommends optimal profile
-
-2. **Readiness Assessment**: Determines if prompt is ready for AI
-   - Score >= 80
-   - No high-severity smells
-   - No critical missing elements
-   - Minimum word count met
-
-3. **Recommendation**: Provides guidance
-   - Suggests profile based on detected type
-   - Offers actionable improvements
-   - Prioritizes recommendations
-
-4. **Preparation**: Refines the prompt
-   - Applies selected profile constraints
-   - Expands templates if selected
-   - Applies rule-based improvements
-   - Returns structured, AI-ready prompt
-
-5. **Output**: Delivers result
-   - Refined prompt
-   - Compilation metadata
-   - Step-by-step analysis
-
-## Key Design Decisions
-
-1. **Plugin Architecture**: Backends are pluggable components
-2. **Validation**: Strict schema validation for all data
-3. **Separation of Concerns**: Clear boundaries between components
-4. **Configuration**: Centralized, flexible configuration system
-5. **Error Handling**: Graceful degradation when components fail
-6. **Local-First**: All analysis is deterministic, offline, and requires no LLM
-7. **Domain-Aware**: AEM, React, NextJS, cloud, and business profiles and
-   patterns ship built-in and are fully user-extensible
-
-## Intent Compiler Architecture
-
-### Principles
-- **Think before inference**: Analyze prompts before spending AI compute
-- **Clarity beats verbosity**: Better prompts over longer prompts
-- **Deterministic analysis**: All analysis is predictable and repeatable
-- **Local-first**: No token usage for analysis
-- **Reduce ambiguity**: Clarify intent before AI processing
-- **Every feature improves intent**: Not just adds functionality
-
-### Pipeline Stages
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Intent Compiler Pipeline                      │
-├─────────────────────────────────────────────────────────────┤
-│  1. Human Thought (Input)                                      │
-│           ↓                                                    │
-│  2. Analysis                                                   │
-│     ├── Type Detection (AEM, NextJS, React, coding, etc.)    │
-│     ├── Missing Elements (Context, Audience, Format, etc.)     │
-│     ├── Smell Detection (ambiguous terms with severity)       │
-│     ├── Challenge Detection (rule-based clarifying questions, │
-│     │   informational only - scope, success criteria,         │
-│     │   audience, quantity, integration constraints)          │
-│     └── Recommendations (actionable, prioritized)              │
-│           ↓                                                    │
-│  3. Readiness Assessment                                       │
-│     ├── Score Calculation (0-100)                             │
-│     ├── Binary Ready/Not Ready                                │
-│     └── Readiness Reasoning                                    │
-│           ↓                                                    │
-│  4. Profile & Template Selection                               │
-│     ├── Auto-recommended based on analysis                     │
-│     └── User override supported                                │
-│           ↓                                                    │
-│  5. Preparation (Refinement)                                   │
-│     ├── Profile constraints applied                           │
-│     ├── Template expansion                                     │
-│     └── Rule-based improvements                               │
-│           ↓                                                    │
-│  6. Output (AI-Ready Prompt)                                   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    User["Terminal user"] --> TUI["PromptSmith Textual UI"]
+    TUI --> Analyzer["Deterministic analyzer"]
+    TUI --> Refiner["Prompt refiner"]
+    Refiner --> Rules["Rule backend"]
+    Refiner --> LocalModel["Local GGUF model"]
+    TUI --> History["Local SQLite history"]
+    TUI --> Files["Profiles, templates, config, exports"]
+    Downloader["Secure model downloader"] --> ModelHost["Hugging Face or custom HTTPS host"]
+    TUI --> Downloader
 ```
 
-### Domain Extensions
+The terminal user and local filesystem are trusted within the current operating-system account. Model hosts are untrusted network inputs. Downloaded preset files are verified before promotion; custom models receive format validation and optional checksum validation but remain user-supplied code/data inputs to llama.cpp.
 
-Web-platform work (AEM, React, NextJS) gets first-class treatment:
+## Components
 
-- **Profiles**: AEM Developer, React AEM Developer, NextJS AEM Developer, Customer Portal Architect
-- **Type Detection**: AEM, NextJS, React, React-AEM, NextJS-AEM patterns
-- **Templates**: AEM component, NextJS app skeleton, React AEM integration
-- **Recommendations**: AEM best practices, NextJS conventions, React patterns
+### Textual application
 
-The same mechanism extends to any domain - drop a profile/template YAML
-into the user directory and the analyzer's recommendations pick it up.
+**Responsibility:** Main interaction, screens, keyboard actions, background work, status reporting, and lifecycle coordination  
+**Inputs:** Keyboard, mouse, profile/template selections, local files  
+**Outputs:** Analysis, refined prompts, status messages, exports  
+**State:** Current prompt, analysis, selections, and application-owned managers
 
-### Scoring Algorithm
+The console entry points resolve to `promptsmith.cli.launcher:main`. The launcher supplies the release-candidate bindings and literal analysis hint while extending the main application module.
 
-The prompt quality score (0-100) is calculated as:
+### Prompt analyzer
 
-```
-Base Score: 100
-- Missing Elements: -10 per missing (max -40)
-- High Severity Smells: -7 per smell (max -30)
-- Medium Severity Smells: -3 per smell (max -15)
-- Too Short: -2 per word deficit (max -20)
-+ All Elements Present: +10
-+ No High Severity Smells: +5
-```
+**Responsibility:** Deterministic prompt classification, readiness scoring, smell detection, missing-element detection, recommendations, and clarifying challenges  
+**Inputs:** Prompt text and optional profile context  
+**Outputs:** `PromptAnalysis`  
+**State:** None beyond static analysis rules
 
-Readiness threshold: Score >= 80 AND no high-severity smells AND no critical missing elements
+Analysis occurs without loading a model and behaves consistently across Rule, LLM, and Hybrid profiles.
 
-### Readiness Criteria
+### Profile and template managers
 
-A prompt is **READY FOR AI** when:
-- Score >= 80/100
-- No high-severity smells ("best", "optimize", "better", etc.)
-- No critical missing elements (Context, Audience/Role)
-- Minimum word count for type is met
+**Responsibility:** Load, validate, merge, edit, and persist built-in and user-defined YAML  
+**Inputs:** Packaged defaults and user-data directories  
+**Outputs:** Validated profile/template configurations  
+**State:** In-memory indexes backed by YAML files
 
-## Packaging, Data Layout, and Versioning (v0.6)
+User entries override same-named built-ins. Edits target user space and survive upgrades.
 
-### Single-source version
+### Prompt refiner
 
-`pyproject.toml` is the only place the version is written. It flows to:
+**Responsibility:** Expand templates, resolve profiles, select backends, reuse backend instances, apply fallback, and record actual backend/model usage  
+**Inputs:** Prompt, profile name, optional template name  
+**Outputs:** Refined prompt and execution metadata  
+**State:** Cached backend instances
 
-- `promptsmith._version.__version__` - read back at runtime through
-  `importlib.metadata`, with `display_version()` formatting PEP 440 for
-  humans (`0.6.0b1` -> `0.6 Beta`)
-- the **About screen** and the `--version` / `-V` flag
-- **build artifact names** - both build scripts read it via
-  `tools/get_version.py`
-- **frozen builds** - the scripts pass `--copy-metadata promptsmith-cli`
-  so the bundled app reads the same metadata, verified by each script's
-  post-build smoke test
+Backend reuse avoids repeatedly loading multi-gigabyte models. Cached LLM backends refresh their configured model path before use, unload the previous model when the path changes, and load the newly selected model within the same session.
 
-### Built-in data lives inside the package
+### Rule backend
 
-Built-in profiles and templates moved from the repository root into
-`src/promptsmith/data/`, declared as `package-data`. Resolution order in
-`path_utils.get_asset_path()`:
+**Responsibility:** Deterministic refinement and preservation of profile constraints  
+**Inputs:** Prompt and normalized profile  
+**Outputs:** Complete rule-refined prompt  
+**State:** None
 
-1. `<root>/<asset>` when it exists - frozen builds, where the build
-   script places `profiles/`, `templates/`, `models/` as visible,
-   editable siblings of the executable
-2. the package's own `data/` directory - source checkouts and wheel
-   installs
-3. `<root>/<asset>` regardless - preserves the always-return-a-path
-   contract (e.g. `models/` before any model has been downloaded)
+### LLM backend
 
-`get_project_root()` no longer raises when there is no `pyproject.toml`
-above the code (the installed-wheel case); it falls back to
-`~/.promptsmith` so config and exports still have a writable, persistent
-home. This closed the long-standing known limitation where a plain wheel
-install couldn't locate its built-ins.
+**Responsibility:** Load one local GGUF model through `llama-cpp-python`, format chat messages, generate a rewrite, clean model-specific preamble/reasoning artifacts, and release native resources  
+**Inputs:** Prompt, profile, configured model path  
+**Outputs:** Refined prompt or a recoverable failure  
+**State:** Loaded llama.cpp model and active model path
 
-### UI identity
+Unmatched reasoning markers are removed conservatively rather than causing the entire answer to be discarded. Complete `<think>...</think>` blocks are removed before returning user-visible output.
 
-The public build renders black background with green shades (classic
-green-phosphor terminal) as the visual cue distinguishing it from the
-internal orange-themed builds. The About screen shows the product name,
-live version, project URL (https://codeberg.org/prozak/promptsmith-cli),
-MIT license, and a Get Support button opening the issue tracker.
+### Hybrid backend
+
+**Responsibility:** Run deterministic rules first, then request local-model polishing  
+**Inputs:** Prompt and profile  
+**Outputs:** Polished prompt or the original rule result  
+**State:** Rule and LLM backend instances
+
+Hybrid is designed to fail open to the deterministic result when model loading, inference, cleanup, or output-quality checks fail.
+
+### Model downloader
+
+**Responsibility:** Download preset and custom GGUF files safely  
+**Inputs:** Catalog entry or custom HTTPS URL  
+**Outputs:** Validated GGUF in the model directory  
+**State:** Temporary `.part` file during transfer
+
+The downloader validates HTTPS URLs and redirects, rejects unsafe filenames and symlinks, streams data, retries transient failures, validates the GGUF header, verifies known preset SHA-256 values, flushes data, and atomically promotes the completed file.
+
+### History store
+
+**Responsibility:** Persist successful prompt refinements and export history  
+**Inputs:** Prompt, refined output, profile, template, backend/model metadata, serialized analysis  
+**Outputs:** History rows, JSON export, CSV export  
+**State:** SQLite database
+
+The store uses WAL mode, busy timeout, corruption quarantine, and best-effort recovery. History failure must not prevent the rest of PromptSmith from operating.
+
+## Primary lifecycle
+
+1. The user enters a prompt.
+2. `PromptAnalyzer` performs deterministic analysis.
+3. The user selects or accepts a profile and optional template.
+4. `PromptRefiner` loads the profile and expands the template.
+5. The refiner resolves or reuses the selected backend.
+6. LLM-capable backends refresh the configured model path before use.
+7. The backend produces a result or falls back to deterministic rules.
+8. The result is checked for basic completeness.
+9. Successful refinement metadata is written to SQLite.
+10. The UI displays, copies, or exports the result.
+
+## Configuration
+
+Configuration sources are:
+
+1. Code defaults
+2. `config.yaml`
+3. Built-in profile/template YAML
+4. User profile/template overrides
+5. Runtime Settings selections persisted through `ConfigManager`
+
+Important values include `default_profile`, `default_template`, and `llm.model_path`.
+
+Model selection is runtime-sensitive. Changing `llm.model_path` must affect cached LLM and Hybrid backends before the next refinement without restarting the process.
+
+## State and data flow
+
+| State | Location | Contents | Retention |
+|---|---|---|---|
+| Configuration | `config.yaml` under project/user root | Defaults and selected model path | Until edited or removed |
+| User profiles | `~/.promptsmith/profiles/` | YAML profile overrides/additions | Until removed |
+| User templates | `~/.promptsmith/templates/` | YAML template overrides/additions | Until removed |
+| Models | `models/` under resolved project root | GGUF files | Until removed |
+| History | `~/.promptsmith/history.db` or portable `user_data/history.db` | Full prompt/output text and metadata | No automatic expiry |
+| Logs | PromptSmith user-data directory | Operational events and error classes | External/manual retention |
+| Exports | `exports/` | Session markdown and history JSON/CSV | Until removed |
+
+Prompt and refined-output contents are sensitive local data. They belong in history and explicit exports, not logs.
+
+## Security model
+
+- **Trust boundaries:** Terminal user and local account are trusted; downloaded files and remote redirects are untrusted.
+- **Secrets:** PromptSmith requires no API keys or account credentials for normal operation.
+- **Privileges:** Run as a normal user. Root or administrator privileges are not required.
+- **Network exposure:** The application opens no listening ports. Outbound HTTPS is used for dependency and model downloads.
+- **Sensitive logs:** Prompt text, refined output, history contents, credentials embedded in prompts, and downloaded response bodies must not be logged.
+
+See [SECURITY.md](SECURITY.md).
+
+## Invariants
+
+- Deterministic analysis must not require or invoke a model.
+- Rule refinement must remain available when model operations fail.
+- Hybrid must preserve a usable deterministic result when LLM polish fails.
+- User profile/template edits must not modify packaged built-ins.
+- Model downloads must never write outside the configured model directory.
+- Partial or invalid model files must never replace a valid final model.
+- Runtime model changes must invalidate the active LLM model before the next inference.
+- Prompt and output bodies must not appear in logs.
+- History corruption must not prevent application startup.
+- Backend instances must be unloaded exactly once during replacement or shutdown.
+
+## Failure and recovery
+
+| Failure | Behavior | Detection | Recovery |
+|---|---|---|---|
+| Missing or invalid model | LLM returns unavailable; Hybrid falls back to rules | Status bar and log event | Download/select a valid GGUF and retry |
+| Model switch during session | Cached backend unloads old model and updates its path | Model Status and next refinement metadata | Re-select model if path is invalid |
+| Model out of memory | Model is unloaded and refinement falls back | User-facing warning and error class in logs | Close applications or select a smaller model |
+| Malformed model response | Cleanup preserves usable text where possible; Hybrid falls back | Backend warning | Retry or use Hybrid/Rule |
+| Interrupted download | `.part` file is removed; valid final file remains unchanged | Status error | Retry download |
+| Checksum or GGUF failure | Download is rejected before promotion | Status error | Verify source/catalog and retry |
+| SQLite corruption | Database is quarantined and a usable store is recreated when possible | Log and empty/recovered history | Restore backup or inspect quarantined file |
+| Invalid profile/template | Validation rejects the change and keeps prior valid state | Editor status | Correct YAML/form values and save again |
+
+## Source map
+
+| Path | Responsibility |
+|---|---|
+| `src/promptsmith/cli/launcher.py` | Console entry point, release bindings, literal startup hint |
+| `src/promptsmith/cli/app.py` | Textual application, screens, history UI, Settings and model switching |
+| `src/promptsmith/core/prompt_analyzer.py` | Deterministic analysis and readiness |
+| `src/promptsmith/core/refiner.py` | Profile/template/backend orchestration and backend cache |
+| `src/promptsmith/core/backends/` | Rule, LLM, and Hybrid implementations |
+| `src/promptsmith/core/history.py` | SQLite persistence, recovery, and export |
+| `src/promptsmith/core/profiles.py` | Profile loading and validation |
+| `src/promptsmith/core/templates.py` | Template loading and validation |
+| `src/promptsmith/scripts/package_models.py` | Secure streamed model downloads |
+| `src/promptsmith/scripts/model_catalog.py` | Built-in model identities and checksums |
+| `src/promptsmith/utils/path_utils.py` | Source, wheel, and portable path resolution |
+| `src/promptsmith/data/` | Packaged profiles and templates |
+| `src/tests/` | Regression and release-candidate tests |
+| `tools/validate_release.py` | Reproducible release validation gate |
+
+## Dependencies
+
+| Dependency | Why it exists | Replacement cost/risk |
+|---|---|---|
+| Textual | Terminal UI and widget lifecycle | High; UI rewrite |
+| llama-cpp-python | Local GGUF inference | High; backend/runtime replacement |
+| PyYAML | Profile, template, and configuration files | Medium; format migration |
+| requests | Secure streamed custom/preset downloads | Low to medium |
+| pyperclip | Clipboard integration | Low; optional platform adapters |
+| psutil | System/resource inspection | Low |
+| SQLite | Local prompt history | Medium; schema/storage migration |
+
+## Decisions
+
+- [0001 — Backend lifecycle and orchestration](docs/adr/0001-backend-lifecycle-and-orchestration.md)
+
+## Change guide
+
+- To change keyboard behavior or screens, start in `src/promptsmith/cli/launcher.py` and `src/promptsmith/cli/app.py`; preserve terminal-width and focus behavior.
+- To change analysis scoring, start in `src/promptsmith/core/prompt_analyzer.py`; preserve deterministic operation.
+- To add a backend, implement the backend interface, register it through `BackendRegistry`, add lifecycle tests, and document fallback behavior.
+- To change model acquisition, start in `package_models.py` and `model_catalog.py`; preserve confinement, checksum, cleanup, and atomic-promotion invariants.
+- To change model selection, preserve runtime refresh for cached LLM and Hybrid instances.
+- To change history, update schema/recovery/export tests and document retention or migration effects.
