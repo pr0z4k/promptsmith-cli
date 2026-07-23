@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest release and current `main` while v1 is being prepared. Older beta builds may contain known downloader, filesystem, or lifecycle defects and should not be treated as supported.
+Security fixes are applied to the latest stable release and current `main`. Older beta builds may contain known downloader, filesystem, or lifecycle defects and are not supported.
 
 ## Security model
 
@@ -40,7 +40,7 @@ Built-in presets are downloaded through HTTPS with:
 - known SHA-256 verification
 - `fsync` and atomic promotion
 
-Custom model URLs must use HTTPS. A custom model without a supplied checksum receives format validation but not cryptographic identity verification. Only use models from publishers you trust.
+Custom model URLs should use HTTPS. Plain HTTP remains available for trusted internal mirrors, but it is vulnerable to tampering in transit and triggers a warning. A custom model without a supplied checksum receives format validation but not cryptographic identity verification. Only use models from publishers you trust.
 
 Downloaded models are data consumed by native inference code. Treat arbitrary GGUF files as untrusted inputs and keep `llama-cpp-python` current within the versions supported by PromptSmith.
 
