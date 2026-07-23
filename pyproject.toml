@@ -63,8 +63,8 @@ build = [
 ]
 
 [project.scripts]
-promptsmith = "promptsmith.cli.launcher:main"
-promptsmith-cli = "promptsmith.cli.launcher:main"
+promptsmith = "promptsmith.cli.app:main"
+promptsmith-cli = "promptsmith.cli.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
