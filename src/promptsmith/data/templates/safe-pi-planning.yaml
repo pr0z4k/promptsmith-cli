@@ -1,0 +1,12 @@
+name: "SAFe PI Planning"
+description: "Generate a PI Planning agenda and objectives for a SAFe Agile Release Train."
+prompt: |
+  Create a detailed PI Planning agenda for a SAFe Agile Release Train with {num_teams} teams.
+  Include the following sections:
+  - **Pre-PI Planning**: Objectives, dependencies, and risks.
+  - **Day 1**: Business context, product vision, and team breakouts.
+  - **Day 2**: Draft PI objectives, dependency mapping, and confidence vote.
+  - **Post-PI Planning**: Final PI objectives, risks, and next steps.
+  Format: Markdown with clear headings and bullet points.
+  Tone: Collaborative and structured.
+version: 1

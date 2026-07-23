@@ -1,0 +1,12 @@
+name: "Terraform Module"
+description: "Generate a Terraform module for deploying cloud infrastructure."
+prompt: |
+  Create a Terraform module for deploying {resource_type}.
+  Include:
+  - **Variables**: Input variables.
+  - **Resources**: Cloud resources to provision.
+  - **Outputs**: Useful information.
+  - **Best Practices**: count/for_each, lifecycle blocks, tags.
+  Format: HCL (Terraform).
+  Tone: Technical and modular.
+version: 1

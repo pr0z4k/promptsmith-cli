@@ -1,0 +1,9 @@
+name: General
+role: General User
+domain: []
+tone: Neutral
+format: Clear and concise text
+constraints: []
+vendor: generic
+version: 1
+backend: llm

@@ -1,0 +1,14 @@
+name: "Spring Boot Microservice"
+description: "Generate a Spring Boot microservice skeleton with best practices."
+prompt: |
+  Create a skeleton for a Spring Boot microservice for {service_name}.
+  Include:
+  - **Project Structure**: Standard Maven/Gradle structure.
+  - **Dependencies**: pom.xml or build.gradle with required libraries.
+  - **Main Class**: @SpringBootApplication class with a REST controller.
+  - **Configuration**: application.yml with common properties.
+  - **Dockerfile**: For containerizing the service.
+  - **Best Practices**: health checks, Swagger/OpenAPI documentation.
+  Format: Code snippets with explanations.
+  Tone: Technical and pragmatic.
+version: 1

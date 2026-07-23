@@ -1,0 +1,15 @@
+name: "Retrospective"
+description: "Generate a retrospective template for a Scrum team."
+prompt: |
+  Create a retrospective template based on the following details: {details}.
+  Identify the team and sprint focus from the details above.
+  Use the Start/Stop/Continue format:
+  - **Start Doing**: 3-5 actions to begin.
+  - **Stop Doing**: 3-5 actions to cease.
+  - **Continue Doing**: 3-5 actions to maintain.
+  Include:
+  - **Action Items**: Assign owners and due dates.
+  - **Metrics**: Sprint velocity, burndown chart trends.
+  Format: Markdown with tables for action items.
+  Tone: Constructive and actionable.
+version: 1

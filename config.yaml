@@ -1,0 +1,7 @@
+default_profile: vibe-coding
+default_template: react-component
+llm:
+  model_path: null
+  min_ram_gb: 16
+ui:
+  theme: default

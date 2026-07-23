@@ -1,0 +1,13 @@
+name: "Architecture Diagram"
+description: "Generate a Mermaid.js architecture diagram for a system."
+prompt: |
+  Create a Mermaid.js diagram for the architecture of {system_name}.
+  Include:
+  - **Components**: Key modules or services.
+  - **Data Flow**: How data moves between components.
+  - **External Dependencies**: APIs, databases, or third-party services.
+  - **Security**: Authentication, authorization, and encryption.
+  Use Mermaid graph TD syntax.
+  Format: Mermaid.js code block.
+  Tone: Technical and precise.
+version: 1

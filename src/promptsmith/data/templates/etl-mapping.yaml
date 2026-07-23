@@ -1,0 +1,15 @@
+name: "ETL Mapping Document"
+description: "Generate a mapping document for an ETL process."
+prompt: |
+  Create an ETL mapping document based on the following details: {details}.
+  Identify the source and target systems from the details above.
+  Include:
+  - **Source Tables**: List of source tables/fields.
+  - **Target Tables**: List of target tables/fields.
+  - **Field Mappings**: Source-to-target field mappings with transformations.
+  - **Business Rules**: Logic for data transformations.
+  - **Error Handling**: Strategies for handling errors or missing data.
+  - **Performance**: Optimizations (e.g., partitioning, pushdown optimization).
+  Format: Markdown with tables for mappings.
+  Tone: Technical and detail-oriented.
+version: 1

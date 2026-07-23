@@ -1,0 +1,17 @@
+name: "Incident Response Plan"
+description: "Generate a structured incident response plan for IT Operations."
+prompt: |
+  Create an incident response plan for {incident_type}.
+  Follow the ITIL Incident Management process and include:
+  - **Incident ID**: Unique identifier (e.g., INC-2024-001).
+  - **Severity**: P0 (Critical) to P4 (Low).
+  - **Impact**: Affected systems/users, business impact.
+  - **Detection**: How the incident was detected.
+  - **Initial Diagnosis**: Symptoms and potential root causes.
+  - **Immediate Actions**: Step-by-step troubleshooting and escalation path.
+  - **Communication**: Internal and external notifications.
+  - **Resolution**: Steps taken to resolve the incident.
+  - **Post-Incident Review**: RCA, lessons learned, and action items.
+  Format: Markdown with headings for each section and tables for timelines/actions.
+  Tone: Urgent and structured.
+version: 1

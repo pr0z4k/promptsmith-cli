@@ -1,0 +1,14 @@
+name: "SWOT Analysis"
+description: "Generate a SWOT analysis for a business initiative or product."
+prompt: |
+  Perform a SWOT analysis for {topic}.
+  Structure the response as:
+  - **Strengths**: Internal positive attributes (3-5 bullet points).
+  - **Weaknesses**: Internal negative attributes (3-5 bullet points).
+  - **Opportunities**: External positive factors (3-5 bullet points).
+  - **Threats**: External negative factors (3-5 bullet points).
+  Include:
+  - **Recommendations**: 2-3 actionable next steps.
+  Format: Markdown with headings.
+  Tone: Analytical and strategic.
+version: 1

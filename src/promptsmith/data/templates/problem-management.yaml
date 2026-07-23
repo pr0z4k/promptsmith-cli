@@ -1,0 +1,15 @@
+name: "Problem Management"
+description: "Generate a problem management record for a recurring IT issue."
+prompt: |
+  Create a problem management record for {problem_description}.
+  Follow ITIL Problem Management and include:
+  - **Problem ID**: Unique identifier (e.g., PRB-2024-001).
+  - **Related Incidents**: List of incident IDs.
+  - **Root Cause Analysis**: 5-Whys or Fishbone diagram.
+  - **Workaround**: Temporary fix (if available).
+  - **Permanent Fix**: Long-term resolution plan.
+  - **Owner**: Responsible team or individual.
+  - **Status**: Open, In Progress, Resolved.
+  Format: Markdown with tables.
+  Tone: Analytical and thorough.
+version: 1

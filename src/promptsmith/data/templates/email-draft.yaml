@@ -1,0 +1,16 @@
+name: "Email Draft"
+description: "Generate a professional email draft for a given purpose."
+prompt: |
+  Draft an email based on the following details: {details}.
+  Identify the purpose, recipient, and appropriate tone from the details
+  above (ask for clarification in the output if any of these are unclear).
+  Include:
+  - **Subject Line**: Clear and concise.
+  - **Salutation**: Appropriate for the recipient.
+  - **Body**:
+    - **Context**: Brief background or reason for the email.
+    - **Key Points**: 3-5 bullet points or short paragraphs.
+    - **Call to Action**: What you need from the recipient.
+  - **Closing**: Professional sign-off.
+  Format: Plain text or Markdown.
+version: 1

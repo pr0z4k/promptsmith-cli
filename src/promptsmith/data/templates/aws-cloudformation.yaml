@@ -1,0 +1,12 @@
+name: "AWS CloudFormation Template"
+description: "Generate a CloudFormation template for deploying AWS resources."
+prompt: |
+  Create an AWS CloudFormation template (YAML) for deploying {resource_type}.
+  Include:
+  - **Parameters**: User inputs (e.g., InstanceType, AMI ID).
+  - **Resources**: AWS resources to create.
+  - **Outputs**: Useful information (e.g., Public IP, ARN).
+  - **Best Practices**: Fn::GetAtt, DependsOn, Metadata.
+  Format: YAML (CloudFormation).
+  Tone: Technical and precise.
+version: 1

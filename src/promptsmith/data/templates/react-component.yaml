@@ -1,0 +1,13 @@
+name: "React Component"
+description: "Generate a reusable React component with TypeScript."
+prompt: |
+  Create a reusable React component for {component_name}.
+  Include:
+  - **Props**: TypeScript interface for props.
+  - **State**: Internal state management.
+  - **Styles**: CSS-in-JS or CSS Modules.
+  - **Accessibility**: ARIA labels, keyboard navigation.
+  - **Best Practices**: React.memo, TypeScript types, JSDoc comments.
+  Format: TypeScript (TSX).
+  Tone: Technical and clean.
+version: 1

@@ -1,0 +1,15 @@
+name: "Business Case"
+description: "Generate a business case for a project or initiative."
+prompt: |
+  Create a business case for {initiative}.
+  Include the following sections:
+  - **Executive Summary**: Brief overview and recommendation.
+  - **Problem Statement**: Current pain points or opportunities.
+  - **Proposed Solution**: High-level description of the solution.
+  - **Benefits**: Quantitative and qualitative benefits.
+  - **Cost Analysis**: Estimated costs (development, maintenance, etc.).
+  - **ROI**: Return on investment calculation.
+  - **Risks**: Potential risks and mitigation strategies.
+  Format: Markdown with tables for financial data.
+  Tone: Persuasive and data-driven.
+version: 1
