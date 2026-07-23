@@ -1,0 +1,24 @@
+name: Fix exec
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set executable bit on all shell scripts
+        run: |
+          find . -name "*.sh" -not -path "./.git/*" -exec chmod +x {} \;
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "All shell scripts already executable — nothing to do"
+            exit 0
+          fi
+          git commit -m "fix: restore executable bit on shell scripts"
+          git push
