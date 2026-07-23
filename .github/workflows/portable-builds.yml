@@ -88,3 +88,37 @@ jobs:
             dist/PromptSmith-cli-*.zip.sha256
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish GitHub release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all portable artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Combine checksums
+        shell: bash
+        run: |
+          cat release-assets/*.zip.sha256 | sort > release-assets/SHA256SUMS.txt
+          cat release-assets/SHA256SUMS.txt
+
+      - name: Create release and upload portable ZIPs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          release-assets/*.zip
+          release-assets/SHA256SUMS.txt
+          --repo "${GITHUB_REPOSITORY}"
+          --verify-tag
+          --generate-notes
+          --title "PromptSmith-cli ${GITHUB_REF_NAME}"
