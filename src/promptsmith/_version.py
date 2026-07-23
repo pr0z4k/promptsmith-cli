@@ -20,8 +20,8 @@ DIST_NAME = "promptsmith-cli"
 PRODUCT_NAME = "PromptSmith-cli"
 
 #: Project home and support links (About screen, docs, --version output).
-PROJECT_URL = "https://codeberg.org/prozak/promptsmith-cli"
-SUPPORT_URL = "https://codeberg.org/prozak/promptsmith-cli/issues"
+PROJECT_URL = "https://github.com/pr0z4k/promptsmith-cli"
+SUPPORT_URL = "https://github.com/pr0z4k/promptsmith-cli/issues"
 
 try:
     __version__ = version(DIST_NAME)
@@ -34,7 +34,7 @@ _PRE_LABELS = {"a": "Alpha", "b": "Beta", "rc": "RC"}
 def display_version(raw: str = None) -> str:
     """Format a PEP 440 version for humans: '0.6.0b1' -> '0.6 Beta'.
 
-    Trailing zero release segments are trimmed (0.6.0 -> 0.6) and
+    Trailing zero release segments are trimmed (1.0.0 -> 1.0) and
     pre-release markers are spelled out (b -> Beta, a -> Alpha, rc -> RC).
     Anything unparseable is returned untouched rather than hidden.
     """
