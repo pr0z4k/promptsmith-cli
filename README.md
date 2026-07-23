@@ -30,6 +30,7 @@ Deterministic analysis remains available without loading a model. LLM and Hybrid
 - Runtime model switching without restarting the application
 - Local SQLite prompt history with JSON and CSV export
 - Terminal UI that remains usable at approximately 80 columns
+- Native portable builds for macOS, Linux, and Windows
 
 ### Non-goals
 
@@ -40,6 +41,8 @@ Deterministic analysis remains available without loading a model. LLM and Hybrid
 
 ## Prerequisites
 
+For a source installation:
+
 - Python 3.10 through 3.14
 - macOS, Linux, or Windows
 - A terminal with Unicode support
@@ -47,6 +50,8 @@ Deterministic analysis remains available without loading a model. LLM and Hybrid
   - TinyLlama: suitable for lower-resource systems
   - Phi-4-mini Q4_K_M: approximately 2.5 GB on disk; 16 GB system RAM recommended
 - Network access only when downloading models or dependencies
+
+Recipients of a portable ZIP do not need Python, pip, Git, or a compiler. They need only a compatible operating system and enough memory for any bundled model.
 
 ## Quick start
 
@@ -81,6 +86,70 @@ PromptSmith-cli <installed version> (...)
 ```
 
 Then launch `promptsmith`, enter a prompt, and press `Ctrl+Enter` to analyze it.
+
+## Build native portable packages
+
+PromptSmith can be packaged as a self-contained folder and ZIP for people who do not have Python installed. Builds are native to the operating system that creates them because PyInstaller does not cross-compile.
+
+| Target | Build on | Command | Output |
+|---|---|---|---|
+| macOS | macOS | `./build_cli.sh` | `dist/PromptSmith-cli-<version>-macos-<arch>.zip` |
+| Linux | Linux | `./build_cli.sh` | `dist/PromptSmith-cli-<version>-linux-<arch>.zip` |
+| Windows | Windows | `build_windows.bat` | `dist\PromptSmith-cli-<version>-windows-x64.zip` |
+
+Prepare the build environment first:
+
+```sh
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[build]"
+```
+
+Windows PowerShell equivalent:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[build]"
+```
+
+Download any GGUF models you want to include before building. The build scripts copy the contents of `models/` into the portable package. Omitting models produces a smaller package where deterministic Rules work immediately and the recipient can download a model later from Settings.
+
+Each ZIP contains:
+
+```text
+PromptSmith-cli-<version>-<platform>/
+├── PromptSmith-cli(.exe)
+├── platform launcher (.command, .sh, or .bat)
+├── profiles/
+├── templates/
+├── models/
+├── config.yaml
+├── READ ME FIRST.txt
+└── _internal/
+```
+
+### Share the ZIP
+
+The generated ZIP is the distributable artifact. You can attach it to a GitHub release, copy it to shared storage, or send it directly to friends or teammates.
+
+The recipient:
+
+1. Downloads and extracts the complete ZIP.
+2. Keeps the extracted folder together. The executable depends on `_internal/` and the adjacent data folders.
+3. Starts PromptSmith with the included launcher.
+4. Handles the operating-system security prompt on first launch:
+   - macOS: right-click the launcher, choose **Open**, then confirm **Open**.
+   - Windows: choose **More info**, then **Run anyway** if SmartScreen appears.
+   - Linux: ensure the launcher is executable with `chmod +x start-promptsmith-cli.sh` when archive permissions were not preserved.
+
+Unsigned community builds may trigger Gatekeeper or SmartScreen. That is expected until releases are signed and, on macOS, notarized. Do not advise recipients to disable operating-system security globally.
+
+Portable ZIPs are platform- and architecture-specific. A macOS Apple Silicon build will not run on Windows, Linux, or an Intel-only Mac. Build and label each artifact separately.
+
+See [BUILD.md](BUILD.md) for native dependency checks, model bundling, signing behavior, artifact verification, and release distribution details.
 
 ## Configuration
 
@@ -165,13 +234,7 @@ Templates should use one logical prompt input. Multiple placeholders are filled 
 
 ## Prompt history
 
-Every successful refinement is recorded in a local SQLite database. History stores:
-
-- timestamp
-- profile and template
-- requested backend and actual model
-- original prompt and refined output
-- serialized analysis metadata
+Every successful refinement is recorded in a local SQLite database. History stores timestamps, selected profile and template, backend and model, original and refined prompts, and analysis metadata.
 
 The History screen supports preview, deletion, complete clearing, and JSON or CSV export.
 
@@ -210,9 +273,9 @@ Check the status-bar error, network access, free disk space, and whether a stale
 
 Use **Settings -> Model Status** to inspect the last backend and model. Re-select the model and run another refinement; switching should not require an application restart.
 
-### The local model returns no usable answer
+### A portable build does not start
 
-Try the Hybrid backend first. Small models can emit malformed reasoning markers or truncated output; Hybrid preserves the deterministic result when model polish fails.
+Confirm that the whole extracted folder is intact, not only the executable. Review `READ ME FIRST.txt`, then run the executable from a terminal to see the actual error. On Windows, install the Microsoft Visual C++ Redistributable if the bundled llama.cpp libraries cannot load.
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for additional cases.
 
@@ -241,4 +304,4 @@ PromptSmith-cli is a candidate for a future prozak.org article after the v1 rele
 
 ## Acknowledgements
 
-PromptSmith builds on Textual, llama.cpp through `llama-cpp-python`, and the GGUF model ecosystem published through Hugging Face.
+PromptSmith builds on Textual, llama.cpp through `llama-cpp-python`, PyInstaller, and the GGUF model ecosystem published through Hugging Face.
