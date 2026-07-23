@@ -1,224 +1,228 @@
-"""Tests for the model download retry/error-handling logic in
-package_models.py, specifically the handling of HuggingFace's Xet storage
-CAS-bridge 403 failures - a well-documented, recurring issue on
-HuggingFace's own infrastructure (confirmed via many independent reports
-of the identical failure spanning many months), not something specific
-to this project. Unlike a genuine 404/401, this is reported as
-intermittent, so it's worth retrying rather than failing immediately;
-these tests confirm both that retry behavior and that the resulting
-error message clearly explains what's actually going on.
+"""Security and robustness tests for model downloads."""
 
-Important: in real usage, the ORIGINAL request URL is always a normal
-huggingface.co resolve URL - only the response's final .url (after
-requests transparently follows the redirect) points at the
-xethub/cas-bridge domain. These are genuinely different strings, and an
-earlier version of this fix checked the wrong one (the original URL),
-which meant it silently never triggered for real downloads. Every test
-here deliberately keeps that distinction, using an ordinary resolve URL
-as input and only setting the xethub/cas-bridge domain on the mocked
-response's .url, so a regression of that exact bug would be caught.
-"""
+import hashlib
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
-from promptsmith.scripts.package_models import _stream_download
+from promptsmith.scripts.package_models import (
+    CONNECT_TIMEOUT_SECONDS,
+    READ_TIMEOUT_SECONDS,
+    DownloadSecurityError,
+    InvalidModelFileError,
+    _safe_filename,
+    _stream_download,
+    _validate_https_url,
+    download_custom_model,
+    filename_from_url,
+)
 
-
-ORDINARY_RESOLVE_URL = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+ORDINARY_RESOLVE_URL = (
+    "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/"
+    "resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+)
 REDIRECTED_XET_BRIDGE_URL = (
     "https://cas-bridge.xethub.hf.co/xet-bridge-us/abc123/def456"
     "?Expires=1783988717&Policy=xyz&Signature=abc"
 )
 
 
-def _make_403_after_redirect() -> requests.exceptions.HTTPError:
-    """Simulates exactly what happens in production: request an ordinary
-    resolve URL, get transparently redirected to the xethub/cas-bridge
-    domain, and that final destination returns 403. response.url reflects
-    the final, post-redirect location - not the original request URL."""
-    resp = requests.Response()
-    resp.status_code = 403
-    resp.reason = "Forbidden"
-    resp.url = REDIRECTED_XET_BRIDGE_URL
-    return requests.exceptions.HTTPError(
-        f"403 Client Error: Forbidden for url: {REDIRECTED_XET_BRIDGE_URL}",
-        response=resp,
+def _response(chunks=(b"GGUF",), *, status=200, url=ORDINARY_RESOLVE_URL, total=None):
+    response = MagicMock()
+    response.url = url
+    response.status_code = status
+    response.headers = {
+        "content-length": str(sum(len(chunk) for chunk in chunks) if total is None else total)
+    }
+    response.iter_content = MagicMock(side_effect=lambda chunk_size: iter(chunks))
+    if status >= 400:
+        error = requests.HTTPError(response=response)
+        response.raise_for_status.side_effect = error
+    else:
+        response.raise_for_status.return_value = None
+    return response
+
+
+def _xet_403():
+    response = _response(status=403, url=REDIRECTED_XET_BRIDGE_URL)
+    return requests.HTTPError(response=response)
+
+
+def test_https_url_validation_rejects_insecure_or_credentialed_sources():
+    assert _validate_https_url(ORDINARY_RESOLVE_URL) == ORDINARY_RESOLVE_URL
+    with pytest.raises(ValueError, match="HTTPS"):
+        _validate_https_url("http://example.com/model.gguf")
+    with pytest.raises(ValueError, match="credentials"):
+        _validate_https_url("https://user:secret@example.com/model.gguf")
+    with pytest.raises(ValueError, match="fragment"):
+        _validate_https_url("https://example.com/model.gguf#ignored")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["../escape.gguf", "folder/model.gguf", r"folder\\model.gguf", ".gguf", "bad name.gguf"],
+)
+def test_custom_filename_rejects_path_traversal_and_unsafe_names(name):
+    with pytest.raises(ValueError):
+        _safe_filename(name)
+
+
+def test_filename_from_url_decodes_and_sanitizes_basename():
+    assert filename_from_url("https://example.com/models/My%20Model.gguf?download=1") == "My_Model.gguf"
+    assert filename_from_url("https://example.com/download") == "download.gguf"
+
+
+def test_request_uses_split_timeouts_and_redirect_validation(tmp_path):
+    response = _response(url="https://cdn.example.com/model.gguf")
+    with patch("requests.get", return_value=response) as mocked_get:
+        _stream_download("model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=1)
+    mocked_get.assert_called_once_with(
+        ORDINARY_RESOLVE_URL,
+        stream=True,
+        timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+        allow_redirects=True,
     )
 
 
+def test_https_to_http_redirect_is_rejected_before_body_is_written(tmp_path):
+    response = _response(url="http://cdn.example.com/model.gguf")
+    dest = tmp_path / "model.gguf"
+    with patch("requests.get", return_value=response):
+        with pytest.raises(ValueError, match="HTTPS"):
+            _stream_download("model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
+    assert not dest.exists()
+    response.iter_content.assert_not_called()
+
+
 def test_xet_bridge_403_is_retried(tmp_path, monkeypatch):
-    """The core fix: a 403 whose final (redirected) URL contains
-    'xethub'/'cas-bridge' must be retried, not failed immediately - this
-    is the exact failure reported in production. The function is called
-    with an ordinary resolve URL, exactly as it would be in real use."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)  # don't actually wait in tests
-
-    call_count = {"n": 0}
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+    calls = {"count": 0}
 
     def fake_get(url, **kwargs):
-        call_count["n"] += 1
-        if call_count["n"] < 3:
-            raise _make_403_after_redirect()
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = lambda: None
-        mock_resp.headers = {"content-length": "4"}
-        # A successful download must now return a valid GGUF (magic bytes),
-        # otherwise the post-download header check correctly rejects it.
-        mock_resp.iter_content = lambda chunk_size: [b"GGUF"]
-        return mock_resp
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise _xet_403()
+        return _response()
 
     with patch("requests.get", side_effect=fake_get):
-        dest = tmp_path / "model.gguf"
-        _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=3)
-
-    assert call_count["n"] == 3
-    assert dest.exists()
+        _stream_download("test-model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=3)
+    assert calls["count"] == 3
 
 
-def test_xet_bridge_403_gives_clear_error_after_exhausting_retries(tmp_path, monkeypatch):
-    """When every retry also fails, the error message must clearly
-    explain this is a known HuggingFace-side issue, not a PromptSmith
-    bug - not just surface the raw 403."""
+def test_xet_bridge_403_has_clear_final_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+    with patch("requests.get", side_effect=_xet_403()):
+        with pytest.raises(RuntimeError, match="Xet storage"):
+            _stream_download("test-model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=3)
+
+
+def test_non_retryable_404_fails_immediately(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+    calls = {"count": 0}
+
+    def fake_get(url, **kwargs):
+        calls["count"] += 1
+        response = _response(status=404)
+        raise requests.HTTPError(response=response)
+
+    with patch("requests.get", side_effect=fake_get):
+        with pytest.raises(RuntimeError, match="HTTP 404"):
+            _stream_download("model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=3)
+    assert calls["count"] == 1
+
+
+def test_retryable_503_is_retried(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+    calls = {"count": 0}
+
+    def fake_get(url, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            response = _response(status=503)
+            raise requests.HTTPError(response=response)
+        return _response()
+
+    with patch("requests.get", side_effect=fake_get):
+        _stream_download("model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=2)
+    assert calls["count"] == 2
+
+
+def test_interrupted_write_never_reaches_destination(tmp_path, monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda *_: None)
 
-    def always_403(url, **kwargs):
-        raise _make_403_after_redirect()
+    def chunks(chunk_size):
+        yield b"GGUFpartial"
+        raise requests.ConnectionError("simulated drop")
 
-    with patch("requests.get", side_effect=always_403):
-        dest = tmp_path / "model.gguf"
-        with pytest.raises(RuntimeError) as exc_info:
-            _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=3)
-
-    message = str(exc_info.value)
-    assert "known" in message.lower() or "recurring" in message.lower()
-    assert "huggingface" in message.lower() or "xet" in message.lower()
+    response = _response()
+    response.iter_content = MagicMock(side_effect=chunks)
+    dest = tmp_path / "model.gguf"
+    with patch("requests.get", return_value=response):
+        with pytest.raises(RuntimeError):
+            _stream_download("model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
     assert not dest.exists()
+    assert not dest.with_name("model.gguf.part").exists()
 
 
-def test_non_xet_403_fails_immediately_without_retrying(tmp_path, monkeypatch):
-    """A 403 whose final URL is NOT on the xethub/cas-bridge domain - e.g.
-    a genuinely gated or unauthorized model - must still fail fast on the
-    first attempt, exactly as before this fix. Retrying that would just
-    waste time for no reason, since it's not the intermittent-
-    infrastructure failure mode this fix specifically targets."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)
-    call_count = {"n": 0}
-
-    def always_403_no_redirect(url, **kwargs):
-        call_count["n"] += 1
-        resp = requests.Response()
-        resp.status_code = 403
-        resp.reason = "Forbidden"
-        resp.url = url  # no redirect happened - same domain throughout
-        raise requests.exceptions.HTTPError(response=resp)
-
-    with patch("requests.get", side_effect=always_403_no_redirect):
-        dest = tmp_path / "model.gguf"
-        with pytest.raises(RuntimeError):
-            _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=3)
-
-    assert call_count["n"] == 1  # no retries for a non-Xet failure
-
-
-def test_404_still_fails_immediately_as_before(tmp_path, monkeypatch):
-    """Sanity check against a regression: genuine 404s (wrong filename,
-    moved repo) must still fail fast, unaffected by the new Xet-specific
-    retry path."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)
-    call_count = {"n": 0}
-
-    def always_404(url, **kwargs):
-        call_count["n"] += 1
-        resp = requests.Response()
-        resp.status_code = 404
-        resp.url = url
-        raise requests.exceptions.HTTPError(response=resp)
-
-    with patch("requests.get", side_effect=always_404):
-        dest = tmp_path / "model.gguf"
-        with pytest.raises(RuntimeError):
-            _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=3)
-
-    assert call_count["n"] == 1
-
-
-def test_interrupted_write_never_leaves_a_file_at_dest_path(tmp_path, monkeypatch):
-    """Regression test for an independent review's finding: downloads
-    previously wrote directly to dest_path. If the process was killed
-    mid-write (SIGKILL, power loss, or anything else no Python except
-    block can catch), a truncated file was left at dest_path, and future
-    runs' `if dest_path.exists(): skip` treated that corrupt file as a
-    complete, valid download forever.
-
-    Simulates this by raising mid-stream from inside iter_content, which
-    Python *can* catch (unlike a real SIGKILL) - close enough to prove the
-    dest_path.exists() check can no longer be fooled by a partial write,
-    since writes now only ever land at dest_path via an atomic rename
-    after a verified-complete download."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)
-
-    def interrupted_iter_content(chunk_size):
-        yield b"partial-data-then-boom"
-        raise ConnectionError("simulated connection drop mid-stream")
-
-    def fake_get(url, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = lambda: None
-        mock_resp.headers = {"content-length": "999999"}  # deliberately unmatched
-        mock_resp.iter_content = interrupted_iter_content
-        return mock_resp
-
-    with patch("requests.get", side_effect=fake_get):
-        dest = tmp_path / "model.gguf"
-        with pytest.raises(RuntimeError):
-            _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
-
-    assert not dest.exists(), "a partial write must never be visible at dest_path"
-    assert not dest.with_name(dest.name + ".part").exists(), ".part must be cleaned up on failure"
-
-
-def test_size_mismatch_is_detected_even_without_an_exception(tmp_path, monkeypatch):
-    """A short read that completes without raising (some servers/proxies
-    just close the connection cleanly mid-transfer rather than erroring)
-    must still be caught by comparing against Content-Length, not silently
-    accepted as a complete file."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)
-
-    def fake_get(url, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = lambda: None
-        mock_resp.headers = {"content-length": "100"}  # claims 100 bytes
-        mock_resp.iter_content = lambda chunk_size: [b"only-ten"]  # delivers far fewer
-        return mock_resp
-
-    with patch("requests.get", side_effect=fake_get):
-        dest = tmp_path / "model.gguf"
-        with pytest.raises(RuntimeError):
-            _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
-
-    assert not dest.exists()
-
-
-def test_successful_download_lands_at_dest_path_with_no_leftover_part_file(tmp_path, monkeypatch):
-    """Sanity check: the happy path still works exactly as before, and the
-    temp .part file doesn't linger after a successful atomic rename."""
-    monkeypatch.setattr(time, "sleep", lambda *_: None)
-
-    def fake_get(url, **kwargs):
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = lambda: None
-        mock_resp.headers = {"content-length": "4"}
-        # Valid GGUF magic so the header check accepts the completed file.
-        mock_resp.iter_content = lambda chunk_size: [b"GGUF"]
-        return mock_resp
-
-    with patch("requests.get", side_effect=fake_get):
-        dest = tmp_path / "model.gguf"
-        _stream_download("test-model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
-
-    assert dest.exists()
+def test_stale_partial_file_is_removed_before_download(tmp_path):
+    dest = tmp_path / "model.gguf"
+    part = tmp_path / "model.gguf.part"
+    part.write_bytes(b"stale")
+    with patch("requests.get", return_value=_response()):
+        _stream_download("model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
     assert dest.read_bytes() == b"GGUF"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not part.exists()
+
+
+def test_symlinked_destination_is_rejected(tmp_path):
+    target = tmp_path / "target.gguf"
+    target.write_bytes(b"GGUF")
+    dest = tmp_path / "model.gguf"
+    try:
+        dest.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    with pytest.raises(DownloadSecurityError):
+        _stream_download("model", ORDINARY_RESOLVE_URL, dest, max_attempts=1)
+
+
+def test_size_mismatch_is_detected(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+    response = _response(chunks=(b"GGUF",), total=100)
+    with patch("requests.get", return_value=response):
+        with pytest.raises(RuntimeError, match="does not match"):
+            _stream_download("model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", max_attempts=1)
+
+
+def test_checksum_success_and_mismatch(tmp_path):
+    checksum = hashlib.sha256(b"GGUF").hexdigest()
+    good = tmp_path / "good.gguf"
+    with patch("requests.get", return_value=_response()):
+        _stream_download(
+            "model", ORDINARY_RESOLVE_URL, good, max_attempts=1, expected_sha256=checksum
+        )
+    assert good.exists()
+
+    bad = tmp_path / "bad.gguf"
+    with patch("requests.get", return_value=_response()):
+        with pytest.raises(InvalidModelFileError, match="SHA-256 mismatch"):
+            _stream_download(
+                "model", ORDINARY_RESOLVE_URL, bad, max_attempts=1, expected_sha256="0" * 64
+            )
+    assert not bad.exists()
+
+
+def test_invalid_checksum_format_fails_before_network(tmp_path):
+    with patch("requests.get") as mocked_get:
+        with pytest.raises(ValueError, match="64 hexadecimal"):
+            _stream_download(
+                "model", ORDINARY_RESOLVE_URL, tmp_path / "model.gguf", expected_sha256="bad"
+            )
+    mocked_get.assert_not_called()
+
+
+def test_custom_download_requires_https_before_resolving_destination():
+    with pytest.raises(ValueError, match="HTTPS"):
+        download_custom_model("http://example.com/model.gguf")
