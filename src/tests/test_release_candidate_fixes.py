@@ -5,31 +5,41 @@ from __future__ import annotations
 from pathlib import Path
 
 from promptsmith.cli.launcher import PromptSmithApp
+from promptsmith.core.backends.llm_backend import LLMBasedBackend
+from promptsmith.core.runtime_model_fixes import configure_runtime_model_behavior
 from promptsmith.scripts.model_catalog import MODEL_CATALOG
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_phi4_catalog_uses_hub_identity_and_checksum() -> None:
+def test_phi4_catalog_uses_correct_public_url_and_checksum() -> None:
     config = MODEL_CATALOG["phi4-mini"]
-    assert config["repo_id"] == "bartowski/microsoft_Phi-4-mini-instruct-GGUF"
+    assert config["url"].startswith(
+        "https://huggingface.co/bartowski/microsoft_Phi-4-mini-instruct-GGUF/"
+    )
     assert config["file"] == "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
     assert len(config["sha256"]) == 64
     int(config["sha256"], 16)
-    assert "url" not in config
+    assert "repo_id" not in config
 
 
 def test_standard_install_includes_local_slm_runtime() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     dependencies = pyproject.split("[project.urls]", 1)[0]
     assert '"llama-cpp-python==0.3.34"' in dependencies
-    assert '"huggingface-hub==0.34.3"' in dependencies
     assert 'promptsmith = "promptsmith.cli.launcher:main"' in pyproject
     assert 'promptsmith-cli = "promptsmith.cli.launcher:main"' in pyproject
 
 
-def test_analyze_no_longer_steals_ctrl_a() -> None:
+def test_editor_shortcuts_do_not_steal_ctrl_a() -> None:
     bindings = {(binding.key, binding.action) for binding in PromptSmithApp.BINDINGS}
     assert ("ctrl+enter", "analyze") in bindings
+    assert ("ctrl+shift+a", "select_prompt_all") in bindings
     assert ("ctrl+a", "analyze") not in bindings
+
+
+def test_unclosed_think_marker_does_not_delete_small_model_answer() -> None:
+    configure_runtime_model_behavior()
+    result = LLMBasedBackend._strip_think_blocks("<think>Rewrite this request clearly")
+    assert result == "Rewrite this request clearly"
