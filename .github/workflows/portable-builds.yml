@@ -98,6 +98,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out release documentation
+        uses: actions/checkout@v4
+
       - name: Download all portable artifacts
         uses: actions/download-artifact@v4
         with:
@@ -114,11 +117,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          release-assets/*.zip
-          release-assets/SHA256SUMS.txt
-          --repo "${GITHUB_REPOSITORY}"
-          --verify-tag
-          --generate-notes
-          --title "PromptSmith-cli ${GITHUB_REF_NAME}"
+        run: |
+          NOTES_FILE="docs/releases/${GITHUB_REF_NAME#v}.md"
+          NOTES_ARGS=(--generate-notes)
+          if [[ -f "$NOTES_FILE" ]]; then
+            NOTES_ARGS=(--notes-file "$NOTES_FILE")
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            release-assets/*.zip \
+            release-assets/SHA256SUMS.txt \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            "${NOTES_ARGS[@]}" \
+            --title "PromptSmith-cli ${GITHUB_REF_NAME}"

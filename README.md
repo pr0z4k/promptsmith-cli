@@ -12,9 +12,10 @@ No cloud inference dependency. No telemetry. No subscription. No prompt-shaped c
 
 Just a better prompt before the expensive machine gets involved.
 
+- **Download:** https://github.com/pr0z4k/promptsmith-cli/releases/latest
 - **Source:** https://github.com/pr0z4k/promptsmith-cli
 - **Issues:** https://github.com/pr0z4k/promptsmith-cli/issues
-- **Releases:** [CHANGELOG.md](CHANGELOG.md)
+- **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **License:** [MIT](LICENSE)
 
 ## Why PromptSmith exists
@@ -50,9 +51,9 @@ Optional refinement
 A better prompt
 ```
 
-AI models are becoming cheaper (sort of...). Human attention is not.
+AI models are becoming cheaper, sort of. Human attention is not.
 
-Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes runing adversary network mental frameworks with a poor response.
+Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes wrestling with a poor response.
 
 ## PromptSmith is not
 
@@ -82,7 +83,7 @@ The analyzer does not need a model to tell you that a prompt lacks context, cons
 
 ### Terminal native
 
-PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume, besides, it looks cool.
+PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume. Besides, it looks cool.
 
 ### One job, done properly
 
@@ -125,6 +126,19 @@ Portable-build users do not need Python, pip, Git, or a compiler. They need only
 
 ## Installation
 
+### Portable release
+
+Download the current platform-specific ZIP from the [latest GitHub release](https://github.com/pr0z4k/promptsmith-cli/releases/latest), extract the complete folder, and use the included launcher.
+
+Portable releases are available for:
+
+- Linux x64
+- Windows x64
+- macOS Apple Silicon
+- macOS Intel
+
+Each release also includes `SHA256SUMS.txt` for artifact verification.
+
 ### From source
 
 Run from the repository root:
@@ -154,7 +168,7 @@ promptsmith --version
 Expected shape:
 
 ```text
-PromptSmith-cli 1.0.0 (1)
+PromptSmith-cli 1.0.0 (1.0)
 ```
 
 ## Quick start
@@ -228,7 +242,7 @@ Preset downloads use HTTPS streaming, redirect validation, retries, GGUF header 
 
 Use **Settings -> Switch Model** to select a downloaded model. Cached LLM and Hybrid backends detect model-path changes and load the new model without requiring an application restart.
 
-Custom downloads must use a `.gguf` filename. HTTPS is strongly recommended. PromptSmith validates the GGUF header, but a custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
+Custom downloads must use a `.gguf` filename. HTTPS is strongly recommended. Plain HTTP remains available for trusted internal mirrors, but PromptSmith warns because traffic can be modified in transit. A custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
 
 ## Prompt history
 
@@ -376,7 +390,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - reproducible lockfiles and builds
 - SBOM generation
 - signed release artifacts
-- macOS notarization and Windows signing (like in a looong time)
+- macOS notarization and Windows signing, like in a looong time
 
 The roadmap is intentionally modest. PromptSmith is your helper, not GLaDOS.
 
@@ -384,7 +398,7 @@ The roadmap is intentionally modest. PromptSmith is your helper, not GLaDOS.
 
 - [Changelog](CHANGELOG.md)
 - [Release checklist](RELEASE_CHECKLIST.md)
-- [v1.0 release notes](RELEASE_NOTES.md)
+- [v1.0 release notes](docs/releases/1.0.0.md)
 
 ## Contributing
 
