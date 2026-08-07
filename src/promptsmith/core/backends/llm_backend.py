@@ -5,9 +5,13 @@ import logging
 import re
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..backends import ModelBackend
 from ..profile import RefinementProfile
+
+if TYPE_CHECKING:
+    from llama_cpp import Llama
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ class LLMBasedBackend(ModelBackend):
         if model_path is None:
             model_path = self._discover_default_model()
         self.model_path = Path(model_path) if model_path else None
-        self.llm = None
+        self.llm: Llama | None = None
         self.last_error: str | None = None
         self._model_loaded = False
         self._lock = threading.RLock()

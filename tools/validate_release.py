@@ -122,23 +122,30 @@ def _wheel_smoke(root: Path, wheel: Path | None) -> CheckResult:
         venv = Path(temporary) / "venv"
         if platform.system() == "Windows":
             smoke_python = venv / "Scripts" / "python.exe"
+            bin_dir = venv / "Scripts"
         else:
             smoke_python = venv / "bin" / "python"
+            bin_dir = venv / "bin"
+
+        profile_check = [
+            str(smoke_python),
+            "-c",
+            (
+                "import promptsmith; "
+                "from promptsmith.core.profiles import ProfileManager; "
+                "from promptsmith.utils.path_utils import get_asset_path; "
+                "p=get_asset_path('profiles', promptsmith.__file__); "
+                "assert len(ProfileManager(p).list_profiles()) > 0"
+            ),
+        ]
 
         commands = [
             [sys.executable, "-m", "venv", str(venv)],
             [str(smoke_python), "-m", "pip", "install", "--disable-pip-version-check", str(wheel)],
-            [str(smoke_python), "-m", "promptsmith.cli.app", "--version"],
-            [
-                str(smoke_python),
-                "-c",
-                (
-                    "from promptsmith.core.profiles import ProfileManager; "
-                    "from promptsmith.utils.path_utils import get_asset_path; "
-                    "p=get_asset_path('profiles', __file__); "
-                    "assert len(ProfileManager(p).list_profiles()) > 0"
-                ),
-            ],
+            [str(bin_dir / "promptsmith"), "--version"],
+            [str(bin_dir / "promptsmith-cli"), "--version"],
+            profile_check,  # first launch
+            profile_check,  # second launch, per RELEASE_CHECKLIST.md
         ]
         for command in commands:
             completed = subprocess.run(command, cwd=root, check=False)

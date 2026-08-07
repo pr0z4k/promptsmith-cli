@@ -1,6 +1,4 @@
 minimum_pre_commit_version: "4.6.0"
-default_language_version:
-  python: python3.10
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -18,7 +16,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.22
+    rev: v0.16.1
     hooks:
       - id: ruff-check
         args: ["--fix", "--exit-non-zero-on-fix"]
@@ -46,4 +44,3 @@ repos:
           - pyperclip==1.11.0
           - psutil==7.2.2
           - requests==2.34.2
-          - tqdm==4.69.0

@@ -135,7 +135,7 @@ At minimum, record one result per supported platform. Frozen builds must be prod
 | Linux | | | | | | |
 | Windows | | | | | | |
 
-Python support declared by the package is 3.10 through 3.14. Either
+Python support declared by the package is 3.11 through 3.14. Either
 validate that matrix (all OS x Python combinations in `ci.yml` actually
 green) or narrow `requires-python` and classifiers to the versions
 actually tested. Narrowing to a *single* version - including the newest

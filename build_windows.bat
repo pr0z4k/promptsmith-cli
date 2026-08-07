@@ -18,7 +18,9 @@ REM   |-- READ ME FIRST.txt
 REM   `-- _internal\                   <- Python runtime + dependencies only, not meant to be touched
 REM
 REM IMPORTANT - do this before running the script:
-REM   1. pip install -e ".[llm]"   (gets llama-cpp-python bundled in)
+REM   1. pip install -e ".[build]"   (llama-cpp-python is a required base
+REM      dependency and is installed regardless; the historical "[llm]"
+REM      extra is a no-op compatibility alias, not how you opt in to it)
 REM      On Windows, llama-cpp-python has no compiler-free source build:
 REM      if pip tries to compile from source and fails, install a prebuilt
 REM      CPU wheel instead:
@@ -66,7 +68,7 @@ REM the package itself must be installed (editable is fine) first.
 python -c "import importlib.metadata as m; m.version('promptsmith-cli')" 2>nul
 if errorlevel 1 (
     echo ERROR: promptsmith-cli is not installed in this environment.
-    echo Run: pip install -e ".[llm]"   ^(or at least pip install -e .^)
+    echo Run: pip install -e ".[build]"   ^(or at least pip install -e .^)
     exit /b 1
 )
 

@@ -111,7 +111,7 @@ Saving tokens is useful. Saving attention, retries, and frustration is better.
 
 For a source installation:
 
-- Python 3.10 through 3.14
+- Python 3.11 through 3.14
 - macOS, Linux, or Windows
 - A terminal with Unicode support
 - Enough memory for the selected GGUF model
@@ -242,7 +242,7 @@ Preset downloads use HTTPS streaming, redirect validation, retries, GGUF header 
 
 Use **Settings -> Switch Model** to select a downloaded model. Cached LLM and Hybrid backends detect model-path changes and load the new model without requiring an application restart.
 
-Custom downloads must use a `.gguf` filename. HTTPS is strongly recommended. Plain HTTP remains available for trusted internal mirrors, but PromptSmith warns because traffic can be modified in transit. A custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
+Custom downloads must use HTTPS and a `.gguf` filename. PromptSmith validates the GGUF header, but a custom model without a supplied checksum cannot receive the same identity verification as a built-in preset.
 
 ## Prompt history
 

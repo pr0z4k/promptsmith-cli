@@ -40,7 +40,7 @@ Built-in presets are downloaded through HTTPS with:
 - known SHA-256 verification
 - `fsync` and atomic promotion
 
-Custom model URLs should use HTTPS. Plain HTTP remains available for trusted internal mirrors, but it is vulnerable to tampering in transit and triggers a warning. A custom model without a supplied checksum receives format validation but not cryptographic identity verification. Only use models from publishers you trust.
+Custom model URLs must use HTTPS; plain HTTP is rejected outright, not merely discouraged. A custom model without a supplied checksum receives format validation but not cryptographic identity verification. Only use models from publishers you trust.
 
 Downloaded models are data consumed by native inference code. Treat arbitrary GGUF files as untrusted inputs and keep `llama-cpp-python` current within the versions supported by PromptSmith.
 

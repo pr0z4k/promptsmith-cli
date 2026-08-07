@@ -1,71 +1,49 @@
 # Changelog
 
-## 1.0.1 - mypy release-gate fixes, dependency ranges, and CI pin consistency
+## 1.0.0 - Initial public release
 
-Closes out the 39 mypy errors blocking the v1.0.1 portable-build tag.
-Full release gate (Ruff, Black, isort, mypy, pytest, `build`, `twine
-check`) passes; wheel-install smoke test requires a machine that can
+PromptSmith-cli's first tagged public release. Deterministic prompt
+analysis and refinement, with optional local-model (GGUF, via
+`llama-cpp-python`) and hybrid backends. Full release gate (Ruff,
+Black, isort, mypy, pytest, `build`, `twine check`) passes against
+this candidate; wheel-install smoke test requires a machine that can
 complete the `llama-cpp-python` native compile.
 
-### Fixed
+### Highlights
 
-- **Two divergent `RuleBasedBackend` implementations existed side by
-  side** (`backends/rule_based.py` and `backends/rule_backend.py`), with
-  `app.py`, `refiner.py`, and `core/__init__.py` importing the older,
-  untyped one while `hybrid_backend.py` imported the newer, correctly
-  typed one. Consolidated into a single canonical `rule_backend.py`
-  (keeping the logging/error-handling behavior from the older version)
-  and removed the duplicate. All call sites now import the same class.
-- **`RefinementProfile` was missing a `backend` field** even though
-  every profile YAML sets one, which was the root cause behind most of
-  the `dict[str, Any]` vs `RefinementProfile` mypy errors cascading
-  through `refiner.py`, `llm_backend.py`, and `hybrid_backend.py`.
-- Assorted missing return-type/parameter annotations, `Any`-return
-  leaks, and `Select`/`Timer`/`HistoryStore` optional-type narrowing in
-  `cli/app.py`, `core/prompt_analyzer.py`, `core/config_store.py`,
-  `core/plugins/__init__.py`, `utils/system_utils.py`, and
-  `utils/path_utils.py` (the latter two now accept `str | Path` for
-  `from_file`, matching how callers actually pass `__file__`).
-- **Windows portable-build CI could install a different
-  `llama-cpp-python` version than the project requires.** The Windows
-  prebuilt-wheel step and the main project install now both resolve
-  against the same `requirements/constraints-release.txt`, so they
-  cannot silently diverge into a source-build fallback.
-- Stale `pip install -e ".[llm]"` guidance corrected throughout
-  (`build_cli.sh`, `BUILD.md`, and the `LLMBasedBackend` runtime error
-  message) - `llama-cpp-python` is a required dependency and `[llm]` is
-  a no-op compatibility alias, not a way to opt in to LLM support.
-
-### Changed
-
-- `BUILD.md` and `build_cli.sh` now note up front that installing
-  `llama-cpp-python` compiles its native backend from source (enabling
-  Metal on Apple Silicon) and can take several minutes on first
-  install - expected behavior, not a hang.
-- Production dependencies moved from exact pins to bounded ranges
-  (e.g. `textual>=8.2.8,<9`) in `pyproject.toml`, so downstream
-  installs aren't blocked by an unrelated patch release. Exact,
-  validated versions for official release artifacts now live in
-  `requirements/constraints-release.txt`, used by CI and the local
-  release gate via `pip install -c requirements/constraints-release.txt`.
-- `build-system.requires` loosened from `setuptools==83.0.0` to
-  `setuptools>=77`; build isolation already controls the build
-  environment, so an exact pin there only risked unrelated build
-  failures.
-- `RELEASE_CHECKLIST.md` genericized away from hardcoded `v1.0`/`1.0.0`
-  wording so it works as a reusable per-release checklist, and now
-  explicitly cross-checks the tag format and `docs/releases/<version>.md`
-  against what the portable-builds release workflow actually reads.
+- Deterministic prompt scoring (0-100) with missing-context, ambiguity,
+  smell, and challenge detection - available without loading a model.
+- Rule, local-LLM, and Hybrid refinement backends, selectable per
+  profile.
+- 35 built-in profiles and 22 built-in templates, with editable user
+  overrides under `~/.promptsmith/` that survive upgrades.
+- Secure preset and custom GGUF model downloads (HTTPS-only, GGUF
+  header validation, SHA-256 verification for presets, atomic
+  promotion into the model directory).
+- Runtime model switching without restarting the application.
+- Local SQLite prompt history with JSON and CSV export.
+- Native portable builds for macOS (Apple Silicon and Intel), Linux,
+  and Windows, built via PyInstaller and published as GitHub Release
+  assets on `v*` tags.
 
 ### Known limitations
 
-- The declared `requires-python = ">=3.10,<3.15"` / CI matrix
-  (3.10-3.14 x macOS/Linux/Windows) has not been re-verified end to
-  end against this release candidate; treat it as aspirational until
-  confirmed, per the updated `RELEASE_CHECKLIST.md`.
-- `CHANGELOG.md` has no entry for `1.0.0` itself (history jumps from
-  `0.6.0b2` to `1.0.1`); not backfilled here since no record of the
-  actual 1.0.0 diff was available at the time of this entry.
+- `requires-python` is `">=3.11,<3.15"`. Python 3.10 was tested and
+  dropped: `test_version_and_about.py` uses the standard-library
+  `tomllib` (added in 3.11), and 3.10 reaches end of life on 2026-10-31
+  regardless. The 3.11-3.14 x macOS/Linux/Windows matrix itself has not
+  been re-verified end to end against this exact release candidate;
+  treat it as aspirational until confirmed, per `RELEASE_CHECKLIST.md`.
+- Portable builds are unsigned and unnotarized; macOS Gatekeeper and
+  Windows SmartScreen will prompt on first launch until that's
+  addressed. See the README's "Share the ZIP" section.
+
+## Pre-1.0 development history
+
+The entries below predate the 1.0.0 tag and are kept for engineering
+context (bug fixes, architecture reviews, and hardening work during
+the beta series). They describe internal milestones, not published
+releases.
 
 ## 0.6.0b2 - history feature, fixes, and hardening
 
@@ -151,7 +129,9 @@ external review.
   TLS), but a download over plain HTTP logs a tamper-in-transit warning
   recommending `https://`. Defense-in-depth: the file is only ever loaded
   as model data, not executed, so this is a modest hardening rather than
-  a closed hole.
+  a closed hole. (Superseded in 1.0.0: custom download URLs must now be
+  HTTPS; plain HTTP is rejected outright rather than merely warned
+  about.)
 
 ### Added - prompt history (detail)
 
