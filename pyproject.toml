@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promptsmith-cli"
-version = "1.0.0"
+version = "1.0.1"
 description = "A local-first prompt preflight tool with deterministic analysis and local SLM refinement."
 authors = [{name = "Prozak"}]
 readme = "README.md"
@@ -52,14 +52,14 @@ dev = [
     "pytest-cov==7.1.0",
     "black==26.5.1",
     "isort==8.0.1",
-    "ruff==0.16.1",
+    "ruff==0.16.0",
     "mypy==2.3.0",
     "pre-commit==4.6.1",
 ]
 build = [
     "build==1.5.0",
     "pyinstaller==6.21.0",
-    "twine==7.0.0",
+    "twine==6.2.0",
 ]
 
 [project.scripts]
@@ -68,7 +68,6 @@ promptsmith-cli = "promptsmith.cli.launcher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["promptsmith*"]
 
 [tool.setuptools.package-data]
 promptsmith = ["data/profiles/*.yaml", "data/templates/*.yaml"]

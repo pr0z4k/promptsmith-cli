@@ -215,6 +215,10 @@ See [SECURITY.md](SECURITY.md).
 | psutil | System/resource inspection | Low |
 | SQLite | Local prompt history | Medium; schema/storage migration |
 
+## Decisions
+
+- [0001 — Backend lifecycle and orchestration](docs/adr/0001-backend-lifecycle-and-orchestration.md)
+
 ## Change guide
 
 - To change keyboard behavior or screens, start in `src/promptsmith/cli/launcher.py` and `src/promptsmith/cli/app.py`; preserve terminal-width and focus behavior.
