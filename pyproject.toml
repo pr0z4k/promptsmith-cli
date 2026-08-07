@@ -52,14 +52,14 @@ dev = [
     "pytest-cov==7.1.0",
     "black==26.5.1",
     "isort==8.0.1",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
     "mypy==2.3.0",
     "pre-commit==4.6.1",
 ]
 build = [
     "build==1.5.0",
     "pyinstaller==6.21.0",
-    "twine==6.2.0",
+    "twine==7.0.0",
 ]
 
 [project.scripts]
