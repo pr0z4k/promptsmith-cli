@@ -2,13 +2,15 @@
 
 > A local-first prompt preflight tool for your terminal.
 
-PromptSmith does not generate code. It does not replace your favorite AI, maintain a giant prompt library, or invent another cloud account for you to forget the password to.
+PromptSmith does not generate code. It does not replace your favorite AI, maintain a giant prompt library (well maybe), or need another cloud account for you to forget the password to and pay your monthly rent.
 
-It helps you send **better prompts before you spend tokens**.
+It helps you send/create **better prompts before you spend tokens**.
 
 Every prompt is analyzed locally, scored from 0 to 100, checked for ambiguity and missing context, and optionally refined with deterministic rules, a local Small Language Model (SLM), or both.
 
-No cloud inference dependency. No telemetry. No subscription. No prompt-shaped cargo cult.
+<img width="800" height="446" alt="promptsmith-cli_screen" src="https://github.com/user-attachments/assets/9998fdb2-336e-409a-a728-d2241839bb3a" />
+
+No cloud inference dependency. No telemetry. No subscriptions.
 
 Just a better prompt before the expensive machine gets involved.
 
@@ -18,7 +20,7 @@ Just a better prompt before the expensive machine gets involved.
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **License:** [MIT](LICENSE)
 
-## Why PromptSmith exists
+## PromptSmith reasons to exist, or why should you care
 
 Every AI conversation starts with a prompt.
 
@@ -26,7 +28,7 @@ Most prompts are written in a hurry. They are vague, underspecified, missing con
 
 PromptSmith breaks this cycle.
 
-Instead of fixing a bad response after the fact, it performs a local preflight before the prompt reaches ChatGPT, Claude, Gemini, Copilot, a local model, or whatever impressive new autocomplete has appeared this week.
+Instead of fixing a bad response after the fact, PromptSmith helps you with a local preflight before the prompt reaches ChatGPT, Claude, Gemini, Copilot, a local model, or whatever impressive new autocomplete has appeared this week.
 
 ```text
 Prompt
@@ -51,13 +53,13 @@ Optional refinement
 A better prompt
 ```
 
-AI models are becoming cheaper, sort of. Human attention is not.
+AI models are becoming cheaper, sort of, eventually, tokens... Human attention and capacity is way more expensive anyway.
 
 Spending thirty seconds improving a prompt is usually cheaper than spending ten minutes wrestling with a poor response.
 
 ## PromptSmith is not
 
-PromptSmith is deliberately narrow.
+PromptSmith is small by design.
 
 It is not:
 
@@ -83,7 +85,7 @@ The analyzer does not need a model to tell you that a prompt lacks context, cons
 
 ### Terminal native
 
-PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume. Besides, it looks cool.
+PromptSmith is built for the place where developers and technical teams already work. It is a Textual TUI, not a browser application wearing a terminal costume. Besides, it looks cool and we should all go back to TUI applications because it helps cognitive context separation (a scientific fact that I just invented when writing this file)
 
 ### One job, done properly
 
@@ -99,7 +101,7 @@ Saving tokens is useful. Saving attention, retries, and frustration is better.
 - Missing-context, ambiguity, smell, and challenge detection
 - Rule, local LLM, and Hybrid refinement backends
 - 35 built-in profiles and 22 built-in templates
-- Editable user profiles that survive upgrades
+- Editable user profiles that survive upgrades, make the Application yours
 - Secure preset and custom GGUF downloads
 - Runtime model switching without restarting the application
 - Local SQLite prompt history with JSON and CSV export
@@ -132,12 +134,35 @@ Download the current platform-specific ZIP from the [latest GitHub release](http
 
 Portable releases are available for:
 
-- Linux x64
-- Windows x64
 - macOS Apple Silicon
 - macOS Intel
+- Linux x64
+- Windows x64
 
 Each release also includes `SHA256SUMS.txt` for artifact verification.
+
+### Homebrew (macOS) <- Recommended user method for macOS
+
+```sh
+brew tap pr0z4k/promptsmith
+brew install pr0z4k/promptsmith/promptsmith-cli
+```
+
+This installs the same portable build as above - including the
+locally-compiled `llama-cpp-python`/`ggml` native libraries - via a
+personal tap, not `homebrew-core`. The build isn't code-signed or
+notarized yet, so macOS Gatekeeper will likely block the first run; if
+so, run once:
+
+```sh
+xattr -dr com.apple.quarantine "$(brew --prefix)/opt/promptsmith-cli/libexec"
+```
+
+Upgrade the same way as any other tapped formula:
+
+```sh
+brew upgrade promptsmith-cli
+```
 
 ### From source
 
