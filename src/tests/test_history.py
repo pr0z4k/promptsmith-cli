@@ -265,9 +265,7 @@ def test_history_export_produces_files(tmp_path, monkeypatch):
 
     asyncio.run(run())
 
-    import promptsmith.cli.app as appmod
-
-    exports = appmod._PROJECT_ROOT / "exports"
+    exports = tmp_path / "exports"
     assert glob.glob(str(exports / "*History*.json"))
     assert glob.glob(str(exports / "*History*.csv"))
 

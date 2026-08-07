@@ -68,6 +68,7 @@ promptsmith-cli = "promptsmith.cli.launcher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["promptsmith*"]
 
 [tool.setuptools.package-data]
 promptsmith = ["data/profiles/*.yaml", "data/templates/*.yaml"]
