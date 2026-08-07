@@ -1,0 +1,14 @@
+name: "User Story"
+description: "Generate a well-structured user story with acceptance criteria."
+prompt: |
+  Write a user story based on the following details: {details}.
+  Identify the user role and the feature/goal from the details above.
+  Use the format:
+    As a [role], I want [goal] so that [benefit].
+  Include:
+  - **Acceptance Criteria**: 3-5 bullet points.
+  - **Dependencies**: Any prerequisites or related work.
+  - **Estimate**: Story points (1-13) or T-shirt size (XS/S/M/L/XL), 1 Story point is equivalent to 4 hours of task work.
+  Format: Markdown.
+  Tone: Clear and concise.
+version: 1

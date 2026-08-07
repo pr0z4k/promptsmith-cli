@@ -1,0 +1,16 @@
+name: "Change Request"
+description: "Generate a standardized Change Request for IT Operations."
+prompt: |
+  Create a Change Request for {change_description}.
+  Follow ITIL Change Management and include:
+  - **Change ID**: Unique identifier (e.g., CHG-2024-001).
+  - **Type**: Standard, Normal, or Emergency.
+  - **Requester**: Name/team requesting the change.
+  - **Implementation Date**: Scheduled date/time.
+  - **Risk Assessment**: Risk level (Low/Medium/High), impact, rollback plan.
+  - **Approval**: CAB approval status and approver name.
+  - **Implementation Steps**: Pre-change checks, execution, post-change verification.
+  - **Communication Plan**: Stakeholder notifications and status updates.
+  Format: Markdown with checklists for steps and tables for risk assessment.
+  Tone: Precise and cautious.
+version: 1

@@ -1,0 +1,14 @@
+name: "Product Requirements Document (PRD)"
+description: "Generate a PRD for a new product or feature."
+prompt: |
+  Create a Product Requirements Document (PRD) for {product_name}.
+  Include the following sections:
+  - **Overview**: Purpose, goals, and success metrics.
+  - **User Stories**: 5-10 key user stories with acceptance criteria.
+  - **Scope**: In-scope and out-of-scope items.
+  - **Assumptions and Dependencies**: Key assumptions and external dependencies.
+  - **Timeline**: High-level milestones and deadlines.
+  - **Risks**: Potential risks and mitigation strategies.
+  Format: Markdown with clear headings.
+  Tone: Professional and detailed.
+version: 1

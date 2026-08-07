@@ -1,0 +1,15 @@
+name: "Contract Review"
+description: "Generate a checklist for reviewing a legal contract."
+prompt: |
+  Create a contract review checklist for a {contract_type}.
+  Include the following sections:
+  - **Parties Involved**: Names and roles of all parties.
+  - **Key Terms**: Definitions, scope, and obligations.
+  - **Payment Terms**: Amounts, schedules, and penalties.
+  - **Termination Clauses**: Conditions for termination.
+  - **Confidentiality**: Data protection and non-disclosure agreements.
+  - **Compliance**: Regulatory or legal requirements.
+  - **Risks**: Potential legal or financial risks.
+  Format: Markdown with checkboxes for each item.
+  Tone: Precise and thorough.
+version: 1

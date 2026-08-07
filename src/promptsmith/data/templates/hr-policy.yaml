@@ -1,0 +1,14 @@
+name: "HR Policy"
+description: "Generate a draft HR policy for a given topic."
+prompt: |
+  Draft an HR policy for {policy_topic}.
+  Include the following sections:
+  - **Purpose**: Why the policy exists.
+  - **Scope**: Who the policy applies to.
+  - **Policy Statement**: Clear rules or guidelines.
+  - **Responsibilities**: Roles and responsibilities for compliance.
+  - **Enforcement**: Consequences for non-compliance.
+  - **Review**: How often the policy will be reviewed/updated.
+  Format: Markdown with headings.
+  Tone: Clear and authoritative.
+version: 1

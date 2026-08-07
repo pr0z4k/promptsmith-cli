@@ -1,0 +1,158 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptsmith-cli"
+version = "1.0.0"
+description = "A local-first prompt preflight tool with deterministic analysis and local SLM refinement."
+authors = [{name = "Prozak"}]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.15"
+keywords = ["prompt-engineering", "prompt-analysis", "tui", "llm", "slm", "local-first", "textual"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing",
+]
+dependencies = [
+    "textual>=8.2.8,<9",
+    "PyYAML>=6.0.3,<7",
+    "pyperclip>=1.11.0,<2",
+    "psutil>=7.2.2,<8",
+    "requests>=2.34.2,<3",
+    "tqdm>=4.70.0,<5",
+    "llama-cpp-python>=0.3.34,<0.4",
+    "huggingface-hub>=1.25.1,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/pr0z4k/promptsmith-cli"
+Issues = "https://github.com/pr0z4k/promptsmith-cli/issues"
+Changelog = "https://github.com/pr0z4k/promptsmith-cli/blob/main/CHANGELOG.md"
+Source = "https://github.com/pr0z4k/promptsmith-cli"
+
+[project.optional-dependencies]
+# Kept as a compatibility alias for existing install instructions. Local SLM
+# support is now part of the standard installation rather than an optional
+# feature that leaves hybrid/LLM profiles unusable.
+llm = []
+dev = [
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "black==26.5.1",
+    "isort==8.0.1",
+    "ruff==0.16.0",
+    "mypy==2.3.0",
+    "pre-commit==4.6.1",
+]
+build = [
+    "build==1.5.0",
+    "pyinstaller==6.21.0",
+    "twine==6.2.0",
+]
+
+[project.scripts]
+promptsmith = "promptsmith.cli.launcher:main"
+promptsmith-cli = "promptsmith.cli.launcher:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+promptsmith = ["data/profiles/*.yaml", "data/templates/*.yaml"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312", "py313", "py314"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.pytest_cache
+    | \.ruff_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["promptsmith"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+    "UP",
+    "B",
+    "C4",
+    "Q",
+    "RUF",
+]
+ignore = [
+    "E501",
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Core components are imported after logging is configured (see the
+# comment above `logger.info(...)` in app.py) so any import-time log
+# noise from those modules lands in the log file. This is deliberate,
+# not an oversight - moving the imports to the top would defeat it.
+"src/promptsmith/cli/app.py" = ["E402"]
+# TYPE_PATTERNS and similar are read-only class-level constant lookup
+# tables, never mutated after class definition - not the per-instance
+# shared-state footgun RUF012 is designed to catch.
+"src/promptsmith/core/prompt_analyzer.py" = ["RUF012"]
+"src/promptsmith/core/schemas.py" = ["RUF012"]
+# Fake* test-double classes here are defined inside the test function
+# body, so a fresh class (and fresh "mutable default") is created on
+# every test invocation - no cross-test state leaks.
+"src/tests/test_history.py" = ["RUF012"]
+"src/tests/test_model_validation.py" = ["RUF012"]
+
+[tool.mypy]
+# Matches the Quality-checks job's actual runner (Python 3.12), not the
+# project's minimum supported version (3.10). mypy's python_version only
+# gates which syntax it accepts when parsing stub files it encounters
+# (including third-party ones like numpy's, which use Python-3.12-only
+# PEP 695 syntax) - it isn't a substitute for real multi-version
+# compatibility, which the pytest matrix (3.10-3.14, every OS) already
+# checks directly against the actual running interpreter.
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+testpaths = ["src/tests"]
+addopts = ["--strict-config", "--strict-markers"]

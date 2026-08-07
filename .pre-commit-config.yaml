@@ -1,0 +1,49 @@
+minimum_pre_commit_version: "4.6.0"
+default_language_version:
+  python: python3.10
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
+    hooks:
+      - id: ruff-check
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pycqa/isort
+    rev: 8.0.1
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.5.1
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy
+        args: ["src/promptsmith"]
+        pass_filenames: false
+        additional_dependencies:
+          - textual==8.2.8
+          - PyYAML==6.0.3
+          - pyperclip==1.11.0
+          - psutil==7.2.2
+          - requests==2.34.2
+          - tqdm==4.69.0

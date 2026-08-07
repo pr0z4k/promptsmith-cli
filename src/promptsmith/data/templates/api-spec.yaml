@@ -1,0 +1,13 @@
+name: "API Specification"
+description: "Generate an OpenAPI/Swagger specification for a REST API."
+prompt: |
+  Create an OpenAPI 3.0 specification for a {api_name} API.
+  Include:
+  - **Info**: Title, description, version.
+  - **Servers**: Base URLs.
+  - **Paths**: Endpoints with methods, parameters, and responses.
+  - **Schemas**: Data models for request/response bodies.
+  - **Authentication**: Security schemes (e.g., OAuth2, API keys).
+  Format: YAML (OpenAPI 3.0).
+  Tone: Technical and structured.
+version: 1

@@ -1,0 +1,22 @@
+# Exact-pin constraints for reproducible CI and portable-build installs.
+#
+# pyproject.toml declares bounded ranges (normal installs, wider
+# compatibility, room for compatible security patches). This file pins the
+# exact versions actually validated for official release artifacts -
+# PyPI wheels, portable builds, and CI test runs - so those stay
+# byte-for-byte reproducible without duplicating version numbers across
+# multiple workflow files.
+#
+# Usage: pip install -c requirements/constraints-release.txt -e ".[dev,build]"
+#
+# Update this file (and re-run the full release gate) when intentionally
+# moving to a new validated version - do not let it drift silently.
+
+textual==8.2.8
+PyYAML==6.0.3
+pyperclip==1.11.0
+psutil==7.2.2
+requests==2.34.2
+tqdm==4.70.0
+llama-cpp-python==0.3.34
+huggingface-hub==1.25.1

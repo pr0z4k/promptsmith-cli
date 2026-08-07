@@ -1,0 +1,16 @@
+name: "Job Description"
+description: "Generate a job description for a given role."
+prompt: |
+  Create a job description based on the following details: {details}.
+  Identify the role and company from the details above.
+  Include the following sections:
+  - **Job Title**: Clear and concise.
+  - **Overview**: Brief summary of the role and its impact.
+  - **Responsibilities**: 5-10 key responsibilities.
+  - **Qualifications**: Required and preferred skills/experience.
+  - **Nice-to-Haves**: Additional skills or experience.
+  - **Company Overview**: Brief description of the company and culture.
+  - **EEO Statement**: Equal Employment Opportunity disclaimer.
+  Format: Markdown with bullet points.
+  Tone: Professional and inclusive.
+version: 1

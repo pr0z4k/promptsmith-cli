@@ -1,0 +1,13 @@
+name: "Next.js App Skeleton"
+description: "Generate a Next.js app skeleton with best practices."
+prompt: |
+  Create a skeleton for a Next.js app for {app_name}.
+  Include:
+  - **Project Structure**: pages/, components/, styles/, public/.
+  - **Dependencies**: package.json with required libraries.
+  - **Pages**: index.tsx, _app.tsx, _document.tsx.
+  - **Configuration**: next.config.js, tsconfig.json.
+  - **Best Practices**: data fetching, error boundaries, ESLint/Prettier.
+  Format: Code snippets with explanations.
+  Tone: Technical and modern.
+version: 1

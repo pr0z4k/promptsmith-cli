@@ -1,0 +1,11 @@
+name: "Elasticsearch Query"
+description: "Generate an Elasticsearch query for a given use case."
+prompt: |
+  Create an Elasticsearch query for {use_case}.
+  Include:
+  - **Query DSL**: JSON for the Elasticsearch query.
+  - **Explanation**: Breakdown of the query components.
+  - **Performance Tips**: Optimizations (e.g., keyword vs. text fields).
+  Format: JSON with explanations.
+  Tone: Technical and analytical.
+version: 1
