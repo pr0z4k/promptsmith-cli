@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class LLMBasedBackend(ModelBackend):
-    """LLM-based refinement using a local llama.cpp model."""
+    """LLM-based refinement using a local llama.cpp model.
+
+    Note: `configure_runtime_model_behavior()` in `runtime_model_fixes.py`
+    patches `_strip_think_blocks` and `refine` on this class after import.
+    If those methods' behavior looks inconsistent with what's defined here,
+    check that module - it isn't a bug in this file.
+    """
 
     def __init__(self, model_path: Path | None = None):
         if model_path is None:

@@ -51,6 +51,12 @@ htmlcov/
 # Type checkers
 .mypy_cache/
 
+# App-generated files from local (non-pytest) runs - conftest.py isolates
+# pytest, but a manual `promptsmith` run from the repo root still writes
+# through the real config.yaml / exports/ paths
+exports/
+*.bak
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

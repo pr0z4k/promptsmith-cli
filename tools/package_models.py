@@ -1,10 +1,9 @@
 import argparse
-import shutil
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
-from promptsmith.core.config import ConfigManager
 from promptsmith.utils.system_utils import MODEL_DIR
+
 
 def package_models(output_path: Path):
     """Package models into a zip file."""
